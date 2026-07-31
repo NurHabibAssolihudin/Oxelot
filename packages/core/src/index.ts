@@ -1,0 +1,8 @@
+export { Oxelot } from './core/index'
+export type { OxelotConfig, SyncConfig, StorageFacade } from './core/index'
+export type { OxelotEvent, DatabaseFacade } from './core/types'
+export type { StorageBackend, StorageProvider, OxelotFile } from './core/storage'
+export type { HardwareBridge, HardwareCapabilities, HardwareCapability } from './core/hardware'
+export type { SyncService, OxelotMutation, SyncState } from './core/sync'
+export { OxelotError } from './errors'
+export type { OxelotErrorCode } from './errors'

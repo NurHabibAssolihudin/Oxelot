@@ -1,0 +1,6 @@
+export { PersistentSyncQueue, FetchSyncDelivery } from './queue'
+export type { SyncService, SyncDelivery, KvLike } from './queue'
+export { serializeMutation, deserializeMutation } from './envelope'
+export type { OxelotMutation, SyncState } from './envelope'
+export { nextRetryDelayMs, isDeadLetter } from './scheduler'
+export { WebLock } from './web-lock'

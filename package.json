@@ -1,0 +1,34 @@
+{
+  "name": "oxelot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-Source Low-Level PWA Native-Bridge Library",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "vite --port 5199",
+    "build": "npm run build -ws",
+    "build:wasm": "cd wasm && wasm-pack build --target web --out-dir ../packages/core/dist/wasm --release",
+    "lint": "eslint .",
+    "typecheck": "tsc -p packages/core && tsc -p packages/react",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:perf": "playwright test --grep @perf",
+    "size": "node scripts/size-check.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@playwright/test": "^1.46.0",
+    "eslint": "^9.9.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.3.0",
+    "vite": "^5.4.2",
+    "vitest": "^2.0.5",
+    "playwright": "^1.46.0"
+  }
+}
