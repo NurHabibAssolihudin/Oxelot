@@ -1,0 +1,9 @@
+[env]
+# zig provides the C compiler for the wasm32-wasip1 target (clang is not
+# installed). zigcc translates the wasip1 target triple to zig's "wasm32-wasi".
+CC_wasm32_wasip1 = { value = "/home/nurhabib/.local/bin/zigcc", force = true }
+
+# Note: libsqlite3-sys 0.38+ detects `wasm32-wasi*` targets itself and applies
+# the wasm-specific C flags (SQLITE_THREADSAFE=0, LONGDOUBLE_TYPE=double, the
+# _WASI_EMULATED_* macros). Do NOT set LIBSQLITE3_FLAGS here: it would also
+# apply to host builds and strip the host SQLite's mutex support.

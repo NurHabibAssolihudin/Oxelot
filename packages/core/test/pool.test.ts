@@ -78,6 +78,39 @@ describe('OxelotPool', () => {
 
     await pool.dispose()
   })
+
+  it('pins db ops to worker 0 while untargeted ops still dispatch', async () => {
+    const workers = [new AutoRespondWorker(), new AutoRespondWorker()]
+    const pool = new OxelotPool((i) => workers[i]! as unknown as Worker, 2)
+
+    await pool.start()
+
+    await Promise.all([
+      pool.request('db.run', { sql: 'CREATE', paramsJson: '[]' }, { worker: 0 }),
+      pool.request('ping'),
+      pool.request('db.query', { sql: 'SELECT', paramsJson: '[]' }, { worker: 0 }),
+      pool.request('ping'),
+    ])
+
+    const dbWorkers = workers.map((w) =>
+      w.posted.filter(
+        (p): p is { message: Extract<OxelotMessage, { kind: 'request' }>; transfer?: ArrayBuffer[] } =>
+          p.message.kind === 'request' && (p.message.op === 'db.run' || p.message.op === 'db.query'),
+      ),
+    )
+    expect(dbWorkers[0]!.length).toBeGreaterThanOrEqual(2)
+    expect(dbWorkers[1]!.length).toBe(0)
+
+    // Untargeted pings are still dispatched (to whichever worker is free; the
+    // pinned db ops saturate worker 0, so they land on worker 1 here).
+    const pingCount = workers.reduce(
+      (n, w) => n + w.posted.filter((p) => p.message.kind === 'request' && p.message.op === 'ping').length,
+      0,
+    )
+    expect(pingCount).toBe(2)
+
+    await pool.dispose()
+  })
 })
 
 describe('createWorkerStorage', () => {

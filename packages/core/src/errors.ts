@@ -11,6 +11,7 @@ export type OxelotErrorCode =
   | 'ERR_SYNC_NETWORK'
   | 'ERR_SYNC_REJECTED'
   | 'ERR_DB_DISABLED'
+  | 'ERR_DB_SQL'
   | 'ERR_PERMISSION_DENIED'
   | 'ERR_UNKNOWN'
 

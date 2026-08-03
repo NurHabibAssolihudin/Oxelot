@@ -1,6 +1,14 @@
-import type { OxelotPool } from './pool/pool'
+import type { OxelotPool, PoolRequestOptions } from './pool/pool'
 import type { DatabaseFacade } from './types'
 import { oxError } from '../errors'
+
+/**
+ * SQLite is a single in-memory instance living on one worker, so every db op
+ * is pinned to worker 0 (the pool would otherwise round-robin across workers,
+ * each holding an independent database).
+ */
+const DB_WORKER = 0
+const PINNED: PoolRequestOptions = { worker: DB_WORKER }
 
 export class PooledDatabase implements DatabaseFacade {
   constructor(
@@ -15,12 +23,12 @@ export class PooledDatabase implements DatabaseFacade {
 
   async run(sql: string, params: unknown[] = []): Promise<void> {
     this.ensureEnabled()
-    await this.pool.request('db.run', { sql, paramsJson: JSON.stringify(params) })
+    await this.pool.request('db.run', { sql, paramsJson: JSON.stringify(params) }, PINNED)
   }
 
   async query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
     this.ensureEnabled()
-    const rows = await this.pool.request<T[]>('db.query', { sql, paramsJson: JSON.stringify(params) })
+    const rows = await this.pool.request<T[]>('db.query', { sql, paramsJson: JSON.stringify(params) }, PINNED)
     return rows
   }
 
@@ -30,6 +38,7 @@ export class PooledDatabase implements DatabaseFacade {
   }
 
   async checkpoint(): Promise<void> {
-    await this.run(`PRAGMA wal_checkpoint(TRUNCATE);`)
+    this.ensureEnabled()
+    await this.pool.request('db.checkpoint', undefined, PINNED)
   }
 }

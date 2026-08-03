@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "vite --port 5199",
     "build": "npm run build -ws",
-    "build:wasm": "cd wasm && wasm-pack build --target web --out-dir ../packages/core/dist/wasm --release",
+    "build:wasm": "cd wasm && cargo build --target wasm32-wasip1 --release && mkdir -p ../packages/core/dist/wasm && cp target/wasm32-wasip1/release/oxelot_sqlite_vfs.wasm ../packages/core/dist/wasm/oxelot_sqlite_vfs.wasm",
     "lint": "eslint .",
     "typecheck": "tsc -p packages/core && tsc -p packages/react",
     "test": "vitest run",

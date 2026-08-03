@@ -60,3 +60,24 @@ test('no-DOM bootstrap probe (B-1): core boots without window/document', async (
   })
   expect(canInstantiate).toBe(true)
 })
+
+test('SQLite WASM: db round-trip and persistence across reload (M1.4)', async ({ page }) => {
+  await page.goto('/')
+  const pre = page.locator('pre')
+  await expect(pre).toContainText('db round-trip: hello db')
+  await expect(pre).toContainText('playground smoke test complete')
+  const firstCount = await page
+    .locator('pre')
+    .textContent()
+    .then((t) => Number((t ?? '').match(/db rows persisted: (\d+)/)?.[1] ?? 0))
+  expect(firstCount).toBeGreaterThanOrEqual(1)
+
+  await page.reload()
+  await expect(pre).toContainText('playground smoke test complete')
+  await expect(pre).toContainText('db round-trip: hello db')
+  const secondCount = await page
+    .locator('pre')
+    .textContent()
+    .then((t) => Number((t ?? '').match(/db rows persisted: (\d+)/)?.[1] ?? -1))
+  expect(secondCount).toBe(firstCount)
+})

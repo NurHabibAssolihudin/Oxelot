@@ -33,6 +33,16 @@ Oxelot.init({ workers: 2, dbName: 'playground.db' })
     log(`file size: ${size}`)
     await file.close()
     await oxelot.storage.remove('demo.bin')
+
+    await oxelot.db.run('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, text TEXT)')
+    await oxelot.db.run('INSERT INTO notes (text) SELECT ?1 WHERE NOT EXISTS (SELECT 1 FROM notes WHERE text = ?1)', [
+      'hello db',
+    ])
+    const rows = await oxelot.db.query<{ id: number; text: string }>('SELECT id, text FROM notes ORDER BY id')
+    log(`db round-trip: ${rows.map((r) => r.text).join(',')}`)
+    log(`db rows persisted: ${rows.length}`)
+    await oxelot.db.checkpoint()
+
     log('playground smoke test complete')
   })
   .catch((err: unknown) => {

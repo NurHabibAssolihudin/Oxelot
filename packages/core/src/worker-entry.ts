@@ -3,10 +3,12 @@ import { createWorkerStorage } from './core/storage'
 import type { WorkerStorageFacade } from './core/storage'
 import type { StorageBackend } from './core/storage'
 import { loadWasm } from './wasm'
+import type { SqliteWasm } from './wasm'
 
 let DB_NAME = 'oxelot.db'
 let DB_BACKEND: StorageBackend | undefined
 let storagePromise: Promise<WorkerStorageFacade> | null = null
+let dbPromise: Promise<{ wasm: SqliteWasm; imageFile: string }> | null = null
 
 function storage(): Promise<WorkerStorageFacade> {
   if (!storagePromise) {
@@ -26,6 +28,43 @@ async function withFile(
   } finally {
     await f.close()
   }
+}
+
+/** File that stores the serialized DB image (interim ADR-05 persistence). */
+function dbImageFile(): string {
+  return `${DB_NAME}.sqlite`
+}
+
+/**
+ * Lazily boots the SQLite wasm instance, seeding it from the persisted DB
+ * image if one exists. The worker owns a single instance shared by all db ops.
+ */
+function db(): Promise<{ wasm: SqliteWasm; imageFile: string }> {
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      const wasm = await loadWasm(DB_NAME)
+      const imageFile = dbImageFile()
+      let image: Uint8Array = new Uint8Array(0)
+      try {
+        image = (await withFile(imageFile, 'read', async (f) => f.readBytes(0, await f.size()))) as Uint8Array
+      } catch {
+        // No persisted image yet; start with an empty database.
+      }
+      wasm.init(DB_NAME, image)
+      return { wasm, imageFile }
+    })()
+  }
+  return dbPromise
+}
+
+/** Serialize the in-memory DB and write the image to storage. */
+async function persistDb(wasm: SqliteWasm, imageFile: string): Promise<void> {
+  const image = wasm.persist()
+  await withFile(imageFile, 'readwrite', async (f) => {
+    await f.truncate(0)
+    await f.writeBytes(0, image)
+    await f.sync()
+  })
 }
 
 const typed =
@@ -85,11 +124,17 @@ handleMessages({
     return s.get(key)
   }),
   'db.run': typed(async ({ sql, paramsJson }: { sql: string; paramsJson: string }) => {
-    const wasm = await loadWasm(DB_NAME)
+    const { wasm, imageFile } = await db()
     wasm.run(sql, paramsJson)
+    await persistDb(wasm, imageFile)
   }),
   'db.query': typed(async ({ sql, paramsJson }: { sql: string; paramsJson: string }) => {
-    const wasm = await loadWasm(DB_NAME)
+    const { wasm } = await db()
     return JSON.parse(wasm.query(sql, paramsJson)) as unknown
   }),
+  'db.checkpoint': async () => {
+    const { wasm, imageFile } = await db()
+    await persistDb(wasm, imageFile)
+    return null
+  },
 })

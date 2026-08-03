@@ -8,6 +8,8 @@ const MAX_CONCURRENCY = 8
 
 export interface PoolRequestOptions {
   transfer?: ArrayBuffer[]
+  /** Pin the request to a specific worker index. db ops must hit one worker. */
+  worker?: number
 }
 
 export interface WorkerInitConfig {
@@ -20,6 +22,7 @@ interface QueuedJob {
   op: string
   payload?: unknown
   transfer?: ArrayBuffer[] | undefined
+  worker?: number
   resolve: (v: unknown) => void
   reject: (e: Error) => void
 }
@@ -60,7 +63,15 @@ export class OxelotPool {
 
   request<T>(op: string, payload?: unknown, options?: PoolRequestOptions): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({ op, payload, transfer: options?.transfer, resolve: resolve as (v: unknown) => void, reject })
+      const job: QueuedJob = {
+        op,
+        payload,
+        transfer: options?.transfer,
+        resolve: resolve as (v: unknown) => void,
+        reject,
+      }
+      if (options?.worker !== undefined) job.worker = options.worker
+      this.queue.push(job)
       this.pump()
     })
   }
@@ -90,9 +101,14 @@ export class OxelotPool {
   }
 
   private pump(): void {
-    while (this.available.length > 0 && this.queue.length > 0) {
-      const idx = this.available.shift()!
-      const job = this.queue.shift()!
+    while (this.queue.length > 0) {
+      const runnable = this.available.findIndex((w) =>
+        this.queue.some((job) => job.worker === undefined || job.worker === w),
+      )
+      if (runnable === -1) break
+      const idx = this.available.splice(runnable, 1)[0]!
+      const jobIdx = this.queue.findIndex((job) => job.worker === undefined || job.worker === idx)
+      const job = this.queue.splice(jobIdx, 1)[0]!
       const bridge = this.bridges[idx]!
       this.inFlight++
       void bridge

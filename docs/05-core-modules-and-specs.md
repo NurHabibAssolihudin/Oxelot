@@ -76,8 +76,22 @@ export interface StorageProvider {
 
 ### 5.1.4 WASM SQLite + OPFS interaction (canonical flow)
 
+> **Amendment (ADR-05):** M1.4 ships the *interim* flow below — image-based
+> persistence via `sqlite3_serialize`/`deserialize` — because a full OPFS VFS is
+> a large FFI surface. The VFS flow (end-state) is retained as the documented
+> target in §5.1.4.
+
+**Interim flow (implemented):**
+
 1. `Oxelot.init` broadcasts `op: 'config'` to every worker at pool start (ADR-04). `DB_NAME` and backend reach the worker before any request.
-2. Worker `W` initializes OPFS dir handle for origin; opens file `DB_NAME` (`{ create: true }`).
+2. First `db.*` op on the worker lazily loads the `.wasm` (target `wasm32-wasip1`, plain extern-C ABI, no `wasm-bindgen`), seeds it from the persisted image file `{DB_NAME}.sqlite` (deserialize), or starts empty if none exists.
+3. `db.run`/`db.query` execute against the in-memory connection. After each `db.run`, the worker serializes the whole image (`export_db`) and writes it back to the OPFS file (truncate → write → sync). `db.checkpoint` forces a persist without running SQL.
+4. `init` runs with `journal_mode = DELETE`, `synchronous = NORMAL` — serialize captures only the main DB file, so a WAL journal must never be left behind.
+5. All `db.*` ops are pinned to worker 0 (`PoolRequestOptions.worker`); SQLite is a single in-memory instance and the pool must not round-robin it.
+
+**End-state VFS flow (target, per original spec):**
+
+1. Worker `W` initializes OPFS dir handle for origin; opens file `DB_NAME` (`{ create: true }`).
 2. `W` creates a sync access handle; passes it to WASM glue via the VFS interface.
 3. SQLite VFS calls `xOpen/xRead/xWrite/xSync/xTruncate/xFileSize` against the handle — **all inside `W`**, never on main thread.
 4. DB opened in `WAL` mode, `synchronous=NORMAL`; auto-checkpoint on `close`.
