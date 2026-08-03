@@ -1,6 +1,6 @@
 # Oxelot — Open-Source Low-Level PWA Native-Bridge Library
 
-> **Package:** `@oxelot/core` · **Companion:** `@oxelot/react` · **Status:** Specification v0.1.0 (Draft) · **License:** MIT
+> **Package:** `@oxelot/core` · **Companion:** `@oxelot/react` · **Status:** Specification v0.1.0 (Draft) · **License:** [MIT](LICENSE)
 
 Oxelot is a high-performance, low-level PWA native-bridge library. It is **not** a web framework, **not** a UI component library, and **not** a DOM engine. It is a bridge that lets Progressive Web Apps reach native-level storage, background processing, and hardware access while remaining distributed over the open web — bypassing app-store gates such as Google Play's 14-day closed-testing rule and sideloading verification.
 
@@ -80,4 +80,4 @@ See [Chapter 2](docs/02-planning-roadmap.md) for the gate criteria that flip eac
 
 ## Contributing
 
-Read [Chapter 8](docs/08-developer-guide.md) (setup) and [Chapter 7](docs/07-boundaries-constraints.md) (rules) before opening a PR. All new public APIs require an ADR (see [Chapter 4](docs/04-ADR/README.md)).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first, then [Chapter 8](docs/08-developer-guide.md) (setup) and [Chapter 7](docs/07-boundaries-constraints.md) (rules) before opening a PR. All new public APIs require an ADR (see [Chapter 4](docs/04-ADR/README.md)).
