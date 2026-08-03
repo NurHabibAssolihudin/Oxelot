@@ -1,12 +1,19 @@
 import { OxelotBridge } from './bridge'
 import { oxError } from '../../errors'
 import type { OxelotEvent } from '../types'
+import type { StorageBackend } from '../storage'
 
 const DEFAULT_CONCURRENCY = 2
 const MAX_CONCURRENCY = 8
 
 export interface PoolRequestOptions {
   transfer?: ArrayBuffer[]
+}
+
+export interface WorkerInitConfig {
+  dbName?: string
+  storageBackend?: StorageBackend
+  dbEnabled?: boolean
 }
 
 interface QueuedJob {
@@ -32,7 +39,7 @@ export class OxelotPool {
     this.concurrency = Math.min(Math.max(concurrency, 1), MAX_CONCURRENCY)
   }
 
-  async start(): Promise<void> {
+  async start(config?: WorkerInitConfig): Promise<void> {
     for (let i = 0; i < this.concurrency; i++) {
       let worker: Worker
       try {
@@ -46,6 +53,7 @@ export class OxelotPool {
         this.dispatchEvent({ type: 'worker-error', worker: i, message: e.message })
       })
       this.bridges.push(bridge)
+      if (config) await bridge.request('config', config)
       this.available.push(i)
     }
   }

@@ -1,4 +1,5 @@
 import { OxelotPool } from './pool/pool'
+import type { WorkerInitConfig } from './pool/pool'
 import { PooledDatabase } from './db'
 import { PlatformHardwareBridge } from './hardware'
 import type { HardwareBridge } from './hardware'
@@ -113,7 +114,7 @@ export class Oxelot {
   ) {
     this.pool = pool
     this.storage = new WorkerStorageFacade(pool, backend)
-    this.db = new PooledDatabase(pool, config.dbName ?? 'oxelot.db')
+    this.db = new PooledDatabase(pool, config.dbName ?? 'oxelot.db', config.dbEnabled ?? true)
     this.sync = sync
     this.hardware = new PlatformHardwareBridge()
     pool.onEvent((ev) => {
@@ -132,7 +133,11 @@ export class Oxelot {
       () => new Worker(WORKER_URL, { type: 'module' }),
       workers,
     )
-    await pool.start()
+    const workerConfig: WorkerInitConfig = {}
+    if (config.dbName !== undefined) workerConfig.dbName = config.dbName
+    if (backend !== 'auto') workerConfig.storageBackend = backend
+    if (config.dbEnabled === false) workerConfig.dbEnabled = false
+    await pool.start(workerConfig)
 
     const sync: SyncService =
       config.sync !== undefined

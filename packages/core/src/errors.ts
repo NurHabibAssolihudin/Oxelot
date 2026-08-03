@@ -10,6 +10,7 @@ export type OxelotErrorCode =
   | 'ERR_HW_GESTURE_REQUIRED'
   | 'ERR_SYNC_NETWORK'
   | 'ERR_SYNC_REJECTED'
+  | 'ERR_DB_DISABLED'
   | 'ERR_PERMISSION_DENIED'
   | 'ERR_UNKNOWN'
 

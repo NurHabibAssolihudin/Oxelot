@@ -76,7 +76,8 @@ export interface StorageProvider {
 
 ### 5.1.4 WASM SQLite + OPFS interaction (canonical flow)
 
-1. Worker `W` initializes OPFS dir handle for origin; opens file `oxelot.db` (`{ create: true }`).
+1. `Oxelot.init` broadcasts `op: 'config'` to every worker at pool start (ADR-04). `DB_NAME` and backend reach the worker before any request.
+2. Worker `W` initializes OPFS dir handle for origin; opens file `DB_NAME` (`{ create: true }`).
 2. `W` creates a sync access handle; passes it to WASM glue via the VFS interface.
 3. SQLite VFS calls `xOpen/xRead/xWrite/xSync/xTruncate/xFileSize` against the handle — **all inside `W`**, never on main thread.
 4. DB opened in `WAL` mode, `synchronous=NORMAL`; auto-checkpoint on `close`.
@@ -298,7 +299,7 @@ export interface OxelotConfig {
   workers?: number
   /** SQLite DB file name (default 'oxelot.db'). */
   dbName?: string
-  /** Optional: skip lazy SQLite init. */
+  /** Disable the SQLite sub-facade: run/query/exec reject with ERR_DB_DISABLED. Lazy init skipped (default true). */
   dbEnabled?: boolean
   storageBackend?: StorageBackend
   sync?: SyncConfig

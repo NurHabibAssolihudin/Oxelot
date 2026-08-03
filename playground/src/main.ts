@@ -1,5 +1,13 @@
 import { Oxelot } from '@oxelot/core'
 
+declare global {
+  interface Window {
+    __oxelot?: { Oxelot: typeof Oxelot }
+  }
+}
+
+window.__oxelot = { Oxelot }
+
 const root = document.getElementById('root')
 if (!root) throw new Error('missing root')
 

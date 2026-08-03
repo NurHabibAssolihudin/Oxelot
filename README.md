@@ -64,17 +64,16 @@ Full workflow in [Chapter 10](docs/10-user-guide.md).
 
 ### Phase 1 implementation notes (v0.1.0)
 
-**Implemented:** monorepo scaffolding (npm workspaces), `@oxelot/core` (facade, worker pool, OPFS/IndexedDB storage, sync queue + backoff + dead letters, hardware capability detection, error codes), `@oxelot/react` hooks, playground, CI workflow, 28 unit tests, bundle-size gate (2.9 KB gzip).
+**Implemented:** monorepo scaffolding (npm workspaces), `@oxelot/core` (facade, worker pool, OPFS/IndexedDB storage, sync queue + backoff + dead letters, hardware capability detection, error codes), worker config delivery via `op: 'config'` (ADR-04, `dbName`/`storageBackend`/`dbEnabled` honored), `@oxelot/react` hooks, playground, CI workflow, 32 unit tests, bundle-size gate (2.9 KB gzip), Playwright e2e (smoke, G3 round-trip, B-1 no-DOM probe) green on local Chromium.
 
 **Pending (blocked on environment, not spec):**
 
 | Item | Blocker | Spec reference |
 |------|---------|----------------|
-| WASM SQLite (`db.run`/`db.query`) | Rust toolchain + `wasm-pack` required to build `wasm/sqlite-vfs`; loader present with graceful `ERR_UNKNOWN` degradation | Chapter 9 Step 9 |
-| Playwright e2e | requires `npx playwright install` (browsers not cached); specs written in `packages/e2e` | Chapter 8 §8.4 |
-| OPFS 500 MB soak (G2) + long-task gate (G1) | requires browser runtime (Playwright) | Chapter 2 §2.1 |
+| WASM SQLite persistence (`db.run`/`db.query`) | Rust toolchain + `wasm-pack` now available, but `wasm/sqlite-vfs` still opens an in-memory DB (M1.4 OPFS VFS not yet implemented); loader present with graceful `ERR_UNKNOWN` degradation | Chapter 9 Step 9 |
+| OPFS 500 MB soak (G2) + long-task gate (G1) | soak/perf specs not yet written; browser runtime now available locally | Chapter 2 §2.1 |
 
-**Tooling deltas vs. spec:** monorepo uses **npm workspaces** (chosen over pnpm; `pnpm` is a drop-in alternative — all commands in Chapters 8/9 are shown as `npm run …`). ESLint uses ESLint 9 flat config without `eslint-plugin-deprecation` (incompatible with ESLint 9).
+**Tooling deltas vs. spec:** monorepo uses **npm workspaces** (chosen over pnpm; `pnpm` is a drop-in alternative — all commands in Chapters 8/9 are shown as `npm run …`). ESLint uses ESLint 9 flat config without `eslint-plugin-deprecation` (incompatible with ESLint 9). `vite.config.ts` sets `root: 'playground'` so `npm run dev` and the Playwright `webServer` serve the playground (Chapter 8 §8.3.5).
 
 See [Chapter 2](docs/02-planning-roadmap.md) for the gate criteria that flip each checkbox.
 

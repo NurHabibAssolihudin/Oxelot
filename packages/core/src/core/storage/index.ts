@@ -19,8 +19,8 @@ export function selectBackend(preference: StorageBackend): StorageProvider {
  * Creates the worker-side storage facade. File I/O goes through the selected
  * backend; structured KV always goes through IndexedDB (available everywhere).
  */
-export function createWorkerStorage(): Promise<WorkerStorageFacade> {
-  const fileProvider = selectBackend('auto')
+export function createWorkerStorage(backend?: StorageBackend): Promise<WorkerStorageFacade> {
+  const fileProvider = selectBackend(backend ?? 'auto')
   const kv = new IdbStorage()
   return Promise.resolve({
     backend: fileProvider.backend,

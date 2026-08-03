@@ -48,6 +48,7 @@ export type OxelotMessage =
 - **`request`:** main → worker. `id` is a monotonic counter per bridge (`String(nextId++)`). `op` routes to the worker-side registry (Chapter 9 §9.3). Binary payloads listed in `transfer` are moved **zero-copy** (detached from sender).
 - **`response`:** worker → main. Matches `id` against the pending `Map<id, {resolve,reject}>`. Unknown `id` is ignored.
 - **`event`:** worker → main *push* (no correlation). Carries watcher notifications (`storage-change`) and sync progress (`sync-state`). Main thread fans out to `Oxelot.on()` subscribers.
+- **`config` op (ADR-04):** a `request` sent by the pool to each worker at start, before the worker is marked available. Payload `{ dbName?, storageBackend?, dbEnabled? }`. Not a new message kind — it routes through the existing registry.
 - **Timeouts:** default `ERR_BRIDGE_TIMEOUT` after 10s for `request`s; configurable via `OxelotConfig.bridgeTimeoutMs` (not part of the public config in v1 — internal constant, documented here for implementers).
 
 ### 6.2.3 Zero-copy rule
@@ -122,7 +123,7 @@ Queue waits; SW 'sync' event on connectivity restore triggers flush()
 
 | Event | Behavior |
 |-------|----------|
-| Spawn | `Oxelot.init` creates `workers` workers with the bundled `worker.js`; each runs self-test on boot (OPFS availability probe) |
+| Spawn | `Oxelot.init` creates `workers` workers with the bundled `worker.js`, broadcasts `op: 'config'` (dbName/backend/dbEnabled, ADR-04), then each runs self-test on boot (OPFS availability probe) |
 | Crash / `error` | Pool marks it dead, respawns, re-dispatches in-flight requests once (`attempts=1`), then rejects with `ERR_WORKER_SPAWN`/`ERR_BRIDGE_TIMEOUT` |
 | Idle | Workers never terminated while pool alive (avoids re-init cost of WASM SQLite); `dispose()` terminates all |
 | Dispose | `Oxelot.dispose()`: terminate workers, close sync handles, release `oxelot-sync`/`oxelot-storage:*` locks, remove listeners |

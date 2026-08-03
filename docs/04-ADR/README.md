@@ -13,6 +13,7 @@ An ADR captures a decision with **context**, **decision**, and **consequences** 
 | [ADR-01](01-modular-library-not-framework.md) | Modular library, not a UI framework | Accepted | Draft |
 | [ADR-02](02-opfs-over-indexeddb.md) | OPFS over plain IndexedDB for high-throughput I/O | Accepted | Draft |
 | [ADR-03](03-pwa-open-web-distribution.md) | PWA & open-web distribution over native app stores | Accepted | Draft |
+| [ADR-04](04-worker-config-delivery.md) | Deliver worker configuration over the existing request/response bridge | Accepted | Draft |
 
 ---
 
