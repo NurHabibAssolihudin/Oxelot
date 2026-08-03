@@ -1,7 +1,10 @@
 [env]
-# zig provides the C compiler for the wasm32-wasip1 target (clang is not
-# installed). zigcc translates the wasip1 target triple to zig's "wasm32-wasi".
-CC_wasm32_wasip1 = { value = "/home/nurhabib/.local/bin/zigcc", force = true }
+# Zig is the C compiler for the wasm32-wasip1 target (clang is not installed on
+# dev machines or CI). `npm run build:wasm` sets CC_wasm32_wasip1 to the
+# portable wrapper at scripts/zigcc (which locates zig via $ZIG). Keep the
+# cargo-level default here pointing at the wrapper too, so direct `cargo build
+# --target wasm32-wasip1` works out of the box.
+CC_wasm32_wasip1 = { value = "../scripts/zigcc", relative = true, force = true }
 
 # Note: libsqlite3-sys 0.38+ detects `wasm32-wasi*` targets itself and applies
 # the wasm-specific C flags (SQLITE_THREADSAFE=0, LONGDOUBLE_TYPE=double, the
