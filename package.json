@@ -5,7 +5,7 @@
   "description": "Open-Source Low-Level PWA Native-Bridge Library",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "workspaces": [
     "packages/*"

@@ -13,7 +13,7 @@
 | Config/build tooling | TypeScript + JSON + shell | Uniform with the runtime | ESLint/prettier on `.ts` |
 
 **Version pins (minimums, per README §8.1):**
-- Node.js ≥ 20 LTS (CI runs on 20 and 22).
+- Node.js ≥ 22 LTS (CI runs on 22).
 - TypeScript ≥ 5.4.
 - Rust ≥ 1.75, target `wasm32-unknown-unknown`; wasm-pack ≥ 0.12.
 
@@ -119,7 +119,7 @@ Selection logic in `StorageFacade.create()`: `config.storageBackend` ∈ `'opfs'
 
 | Concern | Tool | Version pin | Why |
 |---------|------|-------------|-----|
-| Monorepo | **npm** workspaces | ≥ 20 LTS | npm workspaces (chosen over pnpm for environment availability; `pnpm` is a drop-in alternative) |
+| Monorepo | **npm** workspaces | ≥ 22 LTS | npm workspaces (chosen over pnpm for environment availability; `pnpm` is a drop-in alternative) |
 | Build (lib) | **tsup** | ≥ 8 | ESM + CJS + `.d.ts` in one pass; tree-shakable, `sideEffects: false` |
 | Dev/example | **Vite** | ≥ 5 | Playground + e2e `webServer` |
 | Unit tests | **Vitest** | ≥ 1 | Vite-native, worker-compatible test runner |

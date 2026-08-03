@@ -8,7 +8,7 @@
 
 | Tool | Minimum | Purpose | Install check |
 |------|---------|---------|---------------|
-| Node.js | **20 LTS** (CI also runs 22) | Build, tooling, tests | `node --version` |
+| Node.js | **22 LTS** | Build, tooling, tests | `node --version` |
 | npm | **10+** (bundled with Node) | Monorepo workspaces (`pnpm` is a drop-in alternative) | `npm --version` |
 | Rust toolchain | **1.75+** with target `wasm32-unknown-unknown` | WASM SQLite VFS crate | `rustc --version`; `rustup target list --installed` |
 | wasm-pack | **0.12+** | Rust → wasm packaging | `wasm-pack --version` |
@@ -142,7 +142,7 @@ oxelot/
 ### 8.4.3 CI pipeline (`.github/workflows/ci.yml`)
 
 ```
-job: quality     (node 20, npm cache)   lint → typecheck → unit (vitest)
+job: quality     (node 22, npm cache)   lint → typecheck → unit (vitest)
 job: build-and-size (needs quality)     build (tsup) → size gate (G7)
 job: e2e          (needs build-and-size, playwright browsers)  chromium e2e
 ```
