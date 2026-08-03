@@ -16,6 +16,8 @@ export interface WorkerInitConfig {
   dbName?: string
   storageBackend?: StorageBackend
   dbEnabled?: boolean
+  /** Stable per-tab id; storage-change events carry it so tabs can ignore echoes. */
+  sourceTab?: string
 }
 
 interface QueuedJob {

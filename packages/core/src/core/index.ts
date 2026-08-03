@@ -8,6 +8,8 @@ import type { SyncService, KvLike, OxelotMutation, SyncState } from './sync'
 import { oxError } from '../errors'
 import type { OxelotEvent, DatabaseFacade } from './types'
 import type { StorageBackend, OxelotFile } from './storage'
+import { StorageBroadcast, getSourceTab } from './broadcast'
+import type { StorageChangeMessage } from './broadcast'
 
 export interface SyncConfig {
   serverUrl: string
@@ -102,6 +104,8 @@ export class Oxelot {
   readonly sync: SyncService
   readonly hardware: HardwareBridge
   readonly pool: OxelotPool
+  readonly sourceTab: string
+  private readonly broadcast: StorageBroadcast
   private readonly listeners = new Set<(ev: OxelotEvent) => void>()
   private readyEmitted = false
   private disposed = false
@@ -117,8 +121,23 @@ export class Oxelot {
     this.db = new PooledDatabase(pool, config.dbName ?? 'oxelot.db', config.dbEnabled ?? true)
     this.sync = sync
     this.hardware = new PlatformHardwareBridge()
+    this.broadcast = new StorageBroadcast()
+    this.sourceTab = getSourceTab()
     pool.onEvent((ev) => {
-      if (ev.type === 'worker-error') this.emit(ev)
+      if (ev.type === 'worker-error') {
+        this.emit(ev)
+        return
+      }
+      if (ev.type === 'event' && ev.name === 'storage-change') {
+        const msg = ev.payload as StorageChangeMessage | undefined
+        if (typeof msg?.key === 'string') {
+          this.emit({ type: 'storage-change', key: msg.key, sourceTab: msg.sourceTab })
+          this.broadcast.broadcast(msg)
+        }
+      }
+    })
+    this.broadcast.onRemote((msg) => {
+      if (!this.disposed) this.emit({ type: 'storage-change', key: msg.key, sourceTab: msg.sourceTab })
     })
   }
 
@@ -137,6 +156,8 @@ export class Oxelot {
     if (config.dbName !== undefined) workerConfig.dbName = config.dbName
     if (backend !== 'auto') workerConfig.storageBackend = backend
     if (config.dbEnabled === false) workerConfig.dbEnabled = false
+    const sourceTab = getSourceTab()
+    workerConfig.sourceTab = sourceTab
     await pool.start(workerConfig)
 
     const sync: SyncService =
@@ -159,6 +180,7 @@ export class Oxelot {
     if (this.disposed) return
     this.disposed = true
     this.listeners.clear()
+    this.broadcast.dispose()
     await this.pool.dispose()
   }
 

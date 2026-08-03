@@ -8,13 +8,31 @@ interface PoolLike {
   request(op: string): Promise<unknown>
 }
 
+interface StorageFacadeLike {
+  readonly backend: string
+  get<T>(key: string): Promise<T | null>
+  set<T>(key: string, value: T): Promise<void>
+  remove(name: string): Promise<void>
+  open(name: string, mode?: string): Promise<{
+    size(): Promise<number>
+    readBytes(offset: number, length: number): Promise<Uint8Array>
+    writeBytes(offset: number, data: Uint8Array): Promise<void>
+    truncate(size: number): Promise<void>
+    sync(): Promise<void>
+    close(): Promise<void>
+  }>
+  entries(): Promise<string[]>
+}
+
 interface OxelotLike {
   pool: PoolLike
+  storage: StorageFacadeLike
+  on(cb: (ev: { type: string; key?: string; sourceTab?: string }) => void): () => void
   dispose(): Promise<void>
 }
 
 type OxelotCtor = {
-  init(cfg: { workers: number }): Promise<OxelotLike>
+  init(cfg: { workers: number; dbName?: string }): Promise<OxelotLike>
 }
 
 interface TestWindow extends Window {
@@ -80,4 +98,61 @@ test('SQLite WASM: db round-trip and persistence across reload (M1.4)', async ({
     .textContent()
     .then((t) => Number((t ?? '').match(/db rows persisted: (\d+)/)?.[1] ?? -1))
   expect(secondCount).toBe(firstCount)
+})
+
+test('cross-tab storage-change propagates to a sibling tab within 100ms (M1.5)', async ({ context }) => {
+  const pageA = await context.newPage()
+  const pageB = await context.newPage()
+  await pageA.goto('/')
+  await pageB.goto('/')
+
+  // Both tabs expose the Oxelot constructor (playground bootstraps it eagerly).
+  for (const page of [pageA, pageB]) {
+    await page.waitForFunction(
+      () => typeof (window as TestWindow).__oxelot?.Oxelot === 'function',
+      undefined,
+      { timeout: 10000 },
+    )
+  }
+
+  // Tab B subscribes and records storage-change events on window.__m15.
+  await pageB.evaluate(async () => {
+    const w = window as TestWindow & {
+      __m15?: Array<{ key: string; sourceTab: string; at: number }>
+    }
+    w.__m15 = []
+    const oxelot = await w.__oxelot!.Oxelot.init({ workers: 1, dbName: 'm15.db' })
+    oxelot.on((ev) => {
+      if (ev.type === 'storage-change' && ev.key && ev.sourceTab) {
+        // Date.now() is wall-clock and comparable across tabs (unlike
+        // performance.now(), which is per-renderer in Chromium).
+        w.__m15!.push({ key: ev.key, sourceTab: ev.sourceTab, at: Date.now() })
+      }
+    })
+    ;(window as { __m15Oxelot?: unknown }).__m15Oxelot = oxelot
+  })
+
+  // Tab A writes after ready; record the wall-clock write timestamp.
+  const writeAt = await pageA.evaluate(async () => {
+    const w = window as TestWindow
+    const oxelot = await w.__oxelot!.Oxelot.init({ workers: 1, dbName: 'm15.db' })
+    const t0 = Date.now()
+    await oxelot.storage.set('m15-key', { n: 1 })
+    return t0
+  })
+
+  await pageB.waitForFunction(
+    (t0) => (window as { __m15?: Array<{ at: number }> }).__m15?.some((m) => m.at >= t0) ?? false,
+    writeAt,
+    { timeout: 2000 },
+  )
+
+  const latency = await pageB.evaluate(() => {
+    const m = (window as { __m15?: Array<{ at: number }> }).__m15 ?? []
+    return m[m.length - 1]?.at ?? -1
+  })
+  expect(latency - writeAt).toBeGreaterThanOrEqual(0)
+  expect(latency - writeAt).toBeLessThan(100)
+
+  await pageB.evaluate(() => (window as { __m15Oxelot?: { dispose(): Promise<void> } }).__m15Oxelot?.dispose())
 })

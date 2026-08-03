@@ -64,7 +64,7 @@ Full workflow in [Chapter 10](docs/10-user-guide.md).
 
 ### Phase 1 implementation notes (v0.1.0)
 
-**Implemented:** monorepo scaffolding (npm workspaces), `@oxelot/core` (facade, worker pool, OPFS/IndexedDB storage, sync queue + backoff + dead letters, hardware capability detection, error codes), worker config delivery via `op: 'config'` (ADR-04, `dbName`/`storageBackend`/`dbEnabled` honored), WASM SQLite `db.run`/`db.query`/`db.checkpoint` with image-based OPFS persistence across reloads (ADR-05, pinned to one worker, `npm run build:wasm` → `wasm32-wasip1` via zig), `@oxelot/react` hooks, playground, CI workflow, 33 unit tests, bundle-size gate (3.1 KB gzip), Playwright e2e (smoke, G3 round-trip, B-1 no-DOM probe, SQLite persistence across reload) green on local Chromium.
+**Implemented:** monorepo scaffolding (npm workspaces), `@oxelot/core` (facade, worker pool, OPFS/IndexedDB storage, sync queue + backoff + dead letters, hardware capability detection, error codes), worker config delivery via `op: 'config'` (ADR-04, `dbName`/`storageBackend`/`dbEnabled` honored), WASM SQLite `db.run`/`db.query`/`db.checkpoint` with image-based OPFS persistence across reloads (ADR-05, pinned to one worker, `npm run build:wasm` → `wasm32-wasip1` via zig), cross-tab `storage-change` events via BroadcastChannel (ADR-06, `sourceTab` echo filter, ≤100 ms propagation), `@oxelot/react` hooks, playground, CI workflow, 39 unit tests, bundle-size gate (3.1 KB gzip), Playwright e2e (smoke, G3 round-trip, B-1 no-DOM probe, SQLite persistence across reload, cross-tab propagation) green on local Chromium.
 
 **Pending (blocked on environment, not spec):**
 

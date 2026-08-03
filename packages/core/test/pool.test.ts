@@ -32,7 +32,7 @@ describe('OxelotPool', () => {
     const workers = [new AutoRespondWorker(), new AutoRespondWorker()]
     const pool = new OxelotPool((i) => workers[i]! as unknown as Worker, 2)
 
-    await pool.start({ dbName: 'catalog.db', storageBackend: 'indexeddb', dbEnabled: false })
+    await pool.start({ dbName: 'catalog.db', storageBackend: 'indexeddb', dbEnabled: false, sourceTab: 'tab-x' })
     await pool.request('ping')
 
     for (const w of workers) {
@@ -44,6 +44,7 @@ describe('OxelotPool', () => {
           dbName: 'catalog.db',
           storageBackend: 'indexeddb',
           dbEnabled: false,
+          sourceTab: 'tab-x',
         })
       }
     }

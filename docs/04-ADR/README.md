@@ -15,6 +15,7 @@ An ADR captures a decision with **context**, **decision**, and **consequences** 
 | [ADR-03](03-pwa-open-web-distribution.md) | PWA & open-web distribution over native app stores | Accepted | Draft |
 | [ADR-04](04-worker-config-delivery.md) | Deliver worker configuration over the existing request/response bridge | Accepted | Draft |
 | [ADR-05](05-wasm-sqlite-serialize-persistence.md) | Interim WASM SQLite persistence via serialize/deserialize | Accepted | Draft |
+| [ADR-06](06-cross-tab-storage-events.md) | Cross-tab storage events via BroadcastChannel | Accepted | Draft |
 
 ---
 

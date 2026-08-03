@@ -136,3 +136,19 @@ Queue waits; SW 'sync' event on connectivity restore triggers flush()
 - Events are delivered asynchronously (never re-entrant during a `postMessage` handler).
 - Subscribers may unsubscribe via the returned disposer; subscription is idempotent.
 - `ready` fires once after `init` completes (workers spawned, storage backend selected).
+
+### 6.5.1 `storage-change` flow (ADR-06)
+
+Storage mutations happen in the worker; the worker emits `storage-change` over the
+existing `event` message kind after the mutation commits. The main thread:
+
+1. receives `{ type: 'event', name: 'storage-change', payload: { key, sourceTab } }` from the pool;
+2. emits the typed `OxelotEvent` to local subscribers;
+3. posts the payload to a `BroadcastChannel('oxelot-storage')`.
+
+Every other `Oxelot` instance listens on that channel, drops messages whose
+`sourceTab` equals its own tab id (echo filter), and emits the typed event
+locally. `sourceTab` is a stable per-tab id derived from `sessionStorage`
+(`getSourceTab()`) and delivered to workers in `op: 'config'`. When
+`BroadcastChannel` is unavailable, cross-tab propagation degrades to a no-op;
+single-tab behaviour is unchanged.

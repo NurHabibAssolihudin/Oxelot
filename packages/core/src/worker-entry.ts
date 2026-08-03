@@ -1,4 +1,4 @@
-import { handleMessages } from './core/pool/worker-handler'
+import { handleMessages, emitEvent } from './core/pool/worker-handler'
 import { createWorkerStorage } from './core/storage'
 import type { WorkerStorageFacade } from './core/storage'
 import type { StorageBackend } from './core/storage'
@@ -7,8 +7,14 @@ import type { SqliteWasm } from './wasm'
 
 let DB_NAME = 'oxelot.db'
 let DB_BACKEND: StorageBackend | undefined
+let SOURCE_TAB = ''
 let storagePromise: Promise<WorkerStorageFacade> | null = null
 let dbPromise: Promise<{ wasm: SqliteWasm; imageFile: string }> | null = null
+
+function notify(key: string): void {
+  const message = { key, sourceTab: SOURCE_TAB }
+  emitEvent('storage-change', message)
+}
 
 function storage(): Promise<WorkerStorageFacade> {
   if (!storagePromise) {
@@ -73,11 +79,12 @@ const typed =
     fn(payload as T, transfer)
 
 handleMessages({
-  'config': typed(async ({ dbName, storageBackend, dbEnabled }: { dbName?: string; storageBackend?: StorageBackend; dbEnabled?: boolean }) => {
+  'config': typed(async ({ dbName, storageBackend, dbEnabled, sourceTab }: { dbName?: string; storageBackend?: StorageBackend; dbEnabled?: boolean; sourceTab?: string }) => {
     if (typeof dbName === 'string' && dbName.length > 0) DB_NAME = dbName
     if (storageBackend === 'opfs' || storageBackend === 'indexeddb' || storageBackend === 'auto') {
       DB_BACKEND = storageBackend
     }
+    if (typeof sourceTab === 'string' && sourceTab.length > 0) SOURCE_TAB = sourceTab
     void dbEnabled
     return null
   }),
@@ -96,6 +103,7 @@ handleMessages({
         await f.writeBytes(offset, data)
         await f.sync()
       })
+      notify(name)
     },
   ),
   'storage.truncate': typed(async ({ name, size }: { name: string; size: number }) => {
@@ -103,6 +111,7 @@ handleMessages({
       await f.truncate(size)
       await f.sync()
     })
+    notify(name)
   }),
   'storage.getSize': typed(async ({ name }: { name: string }) => {
     return withFile(name, 'read', async (f) => f.size())
@@ -110,6 +119,7 @@ handleMessages({
   'storage.remove': typed(async ({ name }: { name: string }) => {
     const s = await storage()
     await s.remove(name)
+    notify(name)
   }),
   'storage.entries': async () => {
     const s = await storage()
@@ -118,6 +128,7 @@ handleMessages({
   'kv.set': typed(async ({ key, value }: { key: string; value: unknown }) => {
     const s = await storage()
     await s.set(key, value)
+    notify(key)
   }),
   'kv.get': typed(async ({ key }: { key: string }) => {
     const s = await storage()
@@ -127,6 +138,7 @@ handleMessages({
     const { wasm, imageFile } = await db()
     wasm.run(sql, paramsJson)
     await persistDb(wasm, imageFile)
+    notify(imageFile)
   }),
   'db.query': typed(async ({ sql, paramsJson }: { sql: string; paramsJson: string }) => {
     const { wasm } = await db()
