@@ -19,5 +19,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - name: Install zig (C compiler for wasm32-wasip1)
+        run: |
+          cd /tmp
+          curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o zig.tar.xz
+          mkdir -p /opt/zig && tar -xJf zig.tar.xz -C /opt/zig --strip-components=1
+          echo "/opt/zig" >> "$GITHUB_PATH"
       - run: npm run build
+      - run: npm run build:wasm
       - run: npx playwright test --project=chromium --grep @perf
