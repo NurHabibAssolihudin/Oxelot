@@ -27,6 +27,11 @@ interface StorageFacadeLike {
 interface OxelotLike {
   pool: PoolLike
   storage: StorageFacadeLike
+  db: {
+    run(sql: string, params?: unknown[]): Promise<void>
+    query<T>(sql: string, params?: unknown[]): Promise<T[]>
+    checkpoint(): Promise<void>
+  }
   on(cb: (ev: { type: string; key?: string; sourceTab?: string }) => void): () => void
   dispose(): Promise<void>
 }
@@ -109,6 +114,29 @@ test('SQLite WASM: db round-trip and persistence across reload (M1.4)', async ({
     .textContent()
     .then((t) => Number((t ?? '').match(/db rows persisted: (\d+)/)?.[1] ?? -1))
   expect(secondCount).toBe(firstCount)
+})
+
+test('WASM ready: first db op (load + init) completes within the G7 budget', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => typeof (window as TestWindow).__oxelot?.Oxelot === 'function')
+
+  // The .wasm asset must be built and served; the first db.* op triggers the
+  // cold load (fetch + compile + instantiate + seed). G7 targets mid-tier
+  // Android (manual matrix); on desktop Chromium CI we assert a generous bound.
+  const ms = await page.evaluate(async () => {
+    const w = window as TestWindow
+    const oxelot = await w.__oxelot!.Oxelot.init({ workers: 1, dbName: 'g7.db' })
+    const t0 = performance.now()
+    await oxelot.db.run('CREATE TABLE IF NOT EXISTS g7 (n INTEGER)')
+    const elapsed = performance.now() - t0
+    await oxelot.dispose()
+    return elapsed
+  })
+
+  expect(ms).toBeGreaterThan(0)
+  // Desktop Chromium bound. Android mid-tier is asserted in the manual matrix
+  // (Chapter 8 §8.4.4); this guards gross regressions (e.g., missing asset).
+  expect(ms, `first db op took ${ms.toFixed(1)}ms`).toBeLessThan(5_000)
 })
 
 test('cross-tab storage-change propagates to a sibling tab within 100ms (M1.5)', async ({ context }) => {

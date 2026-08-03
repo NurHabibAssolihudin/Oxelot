@@ -1,0 +1,23 @@
+name: Perf (G1)
+
+# G1 long-task gate (Chapter 2 §2.1) runs nightly and on manual dispatch so it
+# does not slow down PR CI. The 30s workload plus browser startup takes ~1 min.
+on:
+  schedule:
+    - cron: '0 4 * * *' # nightly 04:00 UTC
+  workflow_dispatch:
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - uses: playwright-community/playwright-github-action@v2
+      - run: npm run build
+      - run: npx playwright test --project=chromium --grep @perf

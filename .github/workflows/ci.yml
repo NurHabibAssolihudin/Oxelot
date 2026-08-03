@@ -47,4 +47,4 @@ jobs:
       - run: npm ci
       - uses: playwright-community/playwright-github-action@v2
       - run: npm run build
-      - run: npx playwright test --project=chromium
+      - run: npx playwright test --project=chromium --grep-invert "@g2-full|@perf"

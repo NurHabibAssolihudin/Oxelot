@@ -18,8 +18,9 @@
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "typecheck": "tsc -p packages/core && tsc -p packages/react",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --grep-invert \"@g2-full|@perf\"",
     "test:perf": "playwright test --grep @perf",
+    "test:g2-full": "playwright test --grep @g2-full",
     "size": "node scripts/size-check.mjs"
   },
   "devDependencies": {
