@@ -29,23 +29,35 @@ export function useOxelot(config?: OxelotConfig): Oxelot | null {
   return oxelot
 }
 
-export function useOxelotStorage<T>(key: string): {
+/**
+ * Child hooks reuse an instance owned by a parent `useOxelot`; they never spawn
+ * their own pool. Callers that want a standalone hook should own the instance
+ * with `useOxelot()` and pass it in.
+ */
+function useSharedOxelot(instance?: Oxelot | null): Oxelot | null {
+  return instance ?? null
+}
+
+export function useOxelotStorage<T>(
+  key: string,
+  oxelot?: Oxelot | null,
+): {
   data: T | null
   loading: boolean
   error: Error | null
   write: (value: T) => Promise<void>
   remove: () => Promise<void>
 } {
-  const oxelot = useOxelot()
+  const instance = useSharedOxelot(oxelot)
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   const reload = useCallback(async () => {
-    if (!oxelot) return
+    if (!instance) return
     setLoading(true)
     try {
-      const value = await oxelot.storage.get<T>(key)
+      const value = await instance.storage.get<T>(key)
       setData(value)
       setError(null)
     } catch (err) {
@@ -53,35 +65,35 @@ export function useOxelotStorage<T>(key: string): {
     } finally {
       setLoading(false)
     }
-  }, [oxelot, key])
+  }, [instance, key])
 
   useEffect(() => {
     void reload()
-    const off = oxelot?.on((ev) => {
+    const off = instance?.on((ev) => {
       if (ev.type === 'storage-change' && ev.key === key) void reload()
     })
     return off
-  }, [oxelot, key, reload])
+  }, [instance, key, reload])
 
   const write = useCallback(
     async (value: T) => {
-      if (!oxelot) return
+      if (!instance) return
       setData(value)
       try {
-        await oxelot.storage.set(key, value)
+        await instance.storage.set(key, value)
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)))
         throw err
       }
     },
-    [oxelot, key],
+    [instance, key],
   )
 
   const remove = useCallback(async () => {
-    if (!oxelot) return
-    await oxelot.storage.remove(key)
+    if (!instance) return
+    await instance.storage.remove(key)
     setData(null)
-  }, [oxelot, key])
+  }, [instance, key])
 
   return { data, loading, error, write, remove }
 }
@@ -89,13 +101,15 @@ export function useOxelotStorage<T>(key: string): {
 export function useOxelotDB<T>(
   query: (db: DatabaseFacade) => Promise<T>,
   deps: unknown[] = [],
+  oxelot?: Oxelot | null,
 ): {
   result: T | null
   loading: boolean
   error: Error | null
   refresh: () => void
 } {
-  const oxelot = useOxelot()
+  const own = useOxelot()
+  const instance = oxelot ?? own
   const [version, setVersion] = useState(0)
   const [result, setResult] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
@@ -105,9 +119,9 @@ export function useOxelotDB<T>(
 
   useEffect(() => {
     let cancelled = false
-    if (!oxelot) return
+    if (!instance) return
     setLoading(true)
-    void queryRef.current(oxelot.db)
+    void queryRef.current(instance.db)
       .then((res) => {
         if (cancelled) return
         setResult(res)
@@ -124,28 +138,31 @@ export function useOxelotDB<T>(
       cancelled = true
     }
     // deps intentionally spread: consumer-supplied query deps
-  }, [oxelot, version, ...deps])
+  }, [instance, version, ...deps])
 
   const refresh = useCallback(() => setVersion((v) => v + 1), [])
 
   return { result, loading, error, refresh }
 }
 
-export function useOxelotSyncStatus(): {
+const IDLE_SYNC_STATE: SyncState = { kind: 'idle' }
+
+export function useOxelotSyncStatus(oxelot?: Oxelot | null): {
   state: SyncState
   pending: number
   deadLetters: number
   flush: () => Promise<void>
 } {
-  const oxelot = useOxelot()
-  const sync = oxelot?.sync
+  const own = useOxelot()
+  const instance = oxelot ?? own
+  const sync = instance?.sync
 
   const state = useSyncExternalStore<SyncState>(
     (cb) => {
       const off = sync?.onStateChange(cb)
       return off ?? (() => undefined)
     },
-    () => ({ kind: 'idle' } as const),
+    () => IDLE_SYNC_STATE,
   )
 
   useEffect(() => {

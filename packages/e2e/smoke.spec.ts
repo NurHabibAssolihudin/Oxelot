@@ -47,6 +47,17 @@ test('Oxelot initializes and performs a storage round-trip', async ({ page }) =>
   await expect(pre).toContainText('playground smoke test complete')
 })
 
+test('React hooks (M1.6): useOxelotStorage/useOxelotDB drive the playground UI', async ({ page }) => {
+  await page.goto('/')
+  const pre = page.locator('pre')
+  await expect(pre).toContainText('ready: backend=')
+  await expect(pre).toContainText('storage round-trip: hello from oxelot')
+  await expect(pre).toContainText('file size: 4')
+  await expect(pre).toContainText('db round-trip: hello db')
+  await expect(pre).toContainText('db rows persisted: 1')
+  await expect(pre).toContainText('playground smoke test complete')
+})
+
 test('worker round-trip stays within the G3 budget', async ({ page }) => {
   await page.goto('/')
   const pre = page.locator('pre')

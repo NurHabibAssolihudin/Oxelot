@@ -10,6 +10,8 @@ export default tseslint.config(
       '**/playwright-report/**',
       '**/*.config.ts',
       '**/*.config.mjs',
+      '**/*.config.cjs',
+      '.dependency-cruiser.cjs',
       'scripts/*.mjs',
       'eslint.config.mjs',
     ],
