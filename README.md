@@ -64,16 +64,17 @@ Full workflow in [Chapter 10](docs/10-user-guide.md).
 
 ### Phase 1 implementation notes (v0.1.0)
 
-**Implemented:** monorepo scaffolding (npm workspaces), `@oxelot/core` (facade, worker pool, OPFS/IndexedDB storage, sync queue + backoff + dead letters, hardware capability detection, error codes), worker config delivery via `op: 'config'` (ADR-04, `dbName`/`storageBackend`/`dbEnabled` honored), WASM SQLite `db.run`/`db.query`/`db.checkpoint` with image-based OPFS persistence across reloads (ADR-05, pinned to one worker, `npm run build:wasm` → `wasm32-wasip1` via zig), cross-tab `storage-change` events via BroadcastChannel (ADR-06, `sourceTab` echo filter, ≤100 ms propagation), `@oxelot/react` hooks, playground, CI workflow, 39 unit tests, bundle-size gate (3.1 KB gzip), Playwright e2e (smoke, G3 round-trip, B-1 no-DOM probe, SQLite persistence across reload, cross-tab propagation) green on local Chromium.
+**Implemented:** monorepo scaffolding (npm workspaces), `@oxelot/core` (facade, worker pool, OPFS/IndexedDB storage, sync queue + backoff + dead letters, hardware capability detection, error codes), worker config delivery via `op: 'config'` (ADR-04, `dbName`/`storageBackend`/`dbEnabled` honored), WASM SQLite `db.run`/`db.query`/`db.checkpoint` with image-based OPFS persistence across reloads (ADR-05, pinned to one worker, `npm run build:wasm` → `wasm32-wasip1` via zig), cross-tab `storage-change` events via BroadcastChannel (ADR-06, `sourceTab` echo filter, ≤100 ms propagation), `@oxelot/react` hooks (M1.6, shared-instance playground app), dependency-cruiser framework gate (G6), G1 long-task perf gate (30 s workload, nightly CI), G2 OPFS soak (5 MB CI smoke + 500 MB manual `@g2-full`), G7 WASM-ready timing, playground (React), CI workflows, 39 unit tests, bundle-size gate (3.1 KB gzip), Playwright e2e (smoke, G3 round-trip, B-1 no-DOM probe, M1.5 cross-tab propagation, M1.6 hooks, G2 smoke, G7 timing) green on local Chromium.
 
-**Pending (blocked on environment, not spec):**
+**Pending / manual (documented, not CI-blocking):**
 
-| Item | Blocker | Spec reference |
-|------|---------|----------------|
+| Item | Status | Spec reference |
+|------|--------|----------------|
 | Full OPFS VFS for SQLite (ADR-05 end-state) | interim serialize/deserialize image persistence implemented; byte-level VFS deferred as a larger FFI surface | Chapter 5 §5.1.4 |
-| OPFS 500 MB soak (G2) + long-task gate (G1) | soak/perf specs not yet written; browser runtime now available locally | Chapter 2 §2.1 |
+| G2 full 500 MB soak | runs manually (`npm run test:g2-full`); CI runs a 5 MB byte-exact smoke (`opfs` tag) due to GitHub Actions time limits | Chapter 2 §2.1 |
+| G7 WASM-ready ≤100 ms on mid-tier Android | desktop Chromium bound asserted in e2e; Android is the manual device matrix | Chapter 2 §2.1, Chapter 8 §8.4.4 |
 
-**Tooling deltas vs. spec:** monorepo uses **npm workspaces** (chosen over pnpm; `pnpm` is a drop-in alternative — all commands in Chapters 8/9 are shown as `npm run …`). ESLint uses ESLint 9 flat config without `eslint-plugin-deprecation` (incompatible with ESLint 9). `vite.config.ts` sets `root: 'playground'` so `npm run dev` and the Playwright `webServer` serve the playground (Chapter 8 §8.3.5).
+**Tooling deltas vs. spec:** monorepo uses **npm workspaces** (chosen over pnpm; `pnpm` is a drop-in alternative — all commands in Chapters 8/9 are shown as `npm run …`). ESLint uses ESLint 9 flat config without `eslint-plugin-deprecation` (incompatible with ESLint 9). `vite.config.ts` sets `root: 'playground'` + `@vitejs/plugin-react` so `npm run dev` and the Playwright `webServer` serve the React playground (Chapter 8 §8.3.5). `@vitejs/plugin-react@4` is pinned (v6 requires vite 8).
 
 See [Chapter 2](docs/02-planning-roadmap.md) for the gate criteria that flip each checkbox.
 
