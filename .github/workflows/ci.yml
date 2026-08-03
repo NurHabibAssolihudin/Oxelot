@@ -46,7 +46,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: playwright-community/playwright-github-action@v2
+      - run: npx playwright install --with-deps chromium
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-wasip1
