@@ -21,6 +21,7 @@ SQLite ships `sqlite3_serialize()` / `sqlite3_deserialize()`, which copy the **w
 - `init` sets `journal_mode = DELETE` and `synchronous = NORMAL`: serialize captures only the main DB file, so a write-ahead journal must never be left behind.
 - The worker (worker-entry.ts) loads the persisted image file (`{dbName}.sqlite`) at first db op, seeds the instance, executes `db.run`/`db.query`, and after each mutation calls `export_db` and writes the image back to OPFS. `db.checkpoint` forces a persist without running SQL.
 - **All `db.*` ops are pinned to worker 0.** SQLite is a single in-memory instance living on one worker; the pool would otherwise round-robin `db.run`/`db.query` across workers, each holding an independent database. `OxelotPool.request` gains an optional `worker` hint (`PoolRequestOptions.worker`) and routes only there.
+- **Op family naming:** Chapter 5 §5.1.4/§6 specify a `db.exec` op family; the shipped worker implements it as `db.run`, `db.query`, and `db.checkpoint` (narrower than `exec`, with no `exec` alias). Public `DatabaseFacade` methods keep their documented names.
 - Build: `npm run build:wasm` = `cargo build --target wasm32-wasip1 --release` + copy the `.wasm` into `packages/core/dist/wasm/`. The JS loader instantiates it with a minimal `wasi_snapshot_preview1` shim (preopen scan terminated via `EBADF`, no file access). The `.wasm` is a lazy runtime-fetched asset, excluded from the G7 bundle gate.
 
 ## Consequences

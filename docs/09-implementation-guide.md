@@ -35,7 +35,7 @@ Follow this order. Each step's output is consumed by later steps.
 | 12 | `packages/core/src/core/hardware/*` (§5.3) | 5 | unit: capability truth table |
 | 13 | `packages/core/src/core/index.ts` (facade, `Oxelot.init`) | 10,11,12 | e2e: `init` → `ready`; no-DOM probe (B-1) |
 | 14 | `packages/react/src/hooks.ts` (§5.7) | 13 | e2e: hooks in playground |
-| 15 | CI workflow + perf gate + size gate | 1–14 | `npm run test:perf`, `npm run size` |
+| 15 | CI workflow + perf gate + size gate | 1–14 | `npm run test:perf` (nightly), `node scripts/size-check.mjs` (CI) |
 
 ---
 
@@ -47,16 +47,18 @@ Follow this order. Each step's output is consumed by later steps.
   "name": "oxelot",
   "private": true,
   "workspaces": ["packages/*"],
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "scripts": {
     "dev": "vite --port 5199",
     "build": "npm run build -ws",
-    "build:wasm": "cd wasm && wasm-pack build --target web --out-dir ../packages/core/dist/wasm --release",
+    "build:wasm": "cd wasm && cargo build --target wasm32-wasip1 --release && mkdir -p ../packages/core/dist/wasm && cp target/wasm32-wasip1/release/oxelot_sqlite_vfs.wasm ../packages/core/dist/wasm/oxelot_sqlite_vfs.wasm",
     "lint": "eslint .",
+    "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "typecheck": "tsc -p packages/core && tsc -p packages/react",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --grep-invert \"@g2-full|@perf\"",
     "test:perf": "playwright test --grep @perf",
+    "test:g2-full": "playwright test --grep @g2-full",
     "size": "node scripts/size-check.mjs"
   }
 }
@@ -185,7 +187,9 @@ handleMessages({
   'storage.getSize': () => sync.getSize(),
   'storage.flush': () => sync.flush(),
   'storage.close': () => sync.close(),
-  'db.exec': (payload) => runSql(payload), // wired to WASM SQLite (Step 9)
+  'db.run': ({ sql, params }) => run({ sql, params }),       // wired to WASM SQLite (Step 9)
+  'db.query': ({ sql, params }) => query({ sql, params }),
+  'db.checkpoint': () => persist(),                          // force DB image persist
 })
 ```
 
@@ -242,6 +246,6 @@ Real worker spawn, round-trip timing, and OPFS persistence are e2e (Playwright),
 
 1. Contract-conforming implementation (Chapter 5 types unchanged).
 2. Unit + worker + e2e tests for the slice green.
-3. `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:e2e` all green.
-4. `npm run test:perf` and `npm run size` green (once wired).
+3. `npm run lint`, `npm run depcruise`, `npm run typecheck`, `npm test`, `npm run test:e2e` all green.
+4. `npm run test:perf` and `node scripts/size-check.mjs` green (perf nightly + manual; size in CI).
 5. No B-1/B-2 violations (ESLint + grep scan).

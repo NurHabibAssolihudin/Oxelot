@@ -39,6 +39,7 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 ### Milestone M1.4 — WASM SQLite (OPFS VFS)
 **Deliverables:** Rust crate `wasm/sqlite-vfs` compiled with wasm-pack to `wasm32-unknown-unknown`; lazy in-worker instantiation; `DatabaseFacade` with `exec`, `query`, `run`; WAL mode + checkpoint on close.
 **Slice:** CRUD + persistence across page reload; `db.exec` timing under the G3 budget.
+> Deviation (ADR-05): shipped with `wasm32-wasip1` + zig instead of wasm-pack/`wasm32-unknown-unknown`, image-based persistence via `serialize/deserialize` instead of a full OPFS VFS, all `db.*` ops pinned to worker 0. WAL is rejected (serialize only captures the main DB file).
 
 ### Milestone M1.5 — State sync primitive
 **Deliverables:** Structured-clone + `Transferable` message protocol (specified in Chapter 6); storage watcher events (`event` messages); subscription API.
@@ -49,13 +50,13 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 **Slice:** a Vite playground app exercising all hooks.
 
 ### M1 Exit Criteria (Phase 1 gate)
-- [ ] G1: no long tasks > 16ms during the 30s heavy workload (playground page with performance observer).
-- [ ] G2: 500MB OPFS dataset written/reloaded/read byte-identical (Chromium + Safari 15.2+).
-- [ ] G3: round-trip p95 < 16ms in CI.
-- [ ] G5: ESLint rule + no-DOM bootstrap probe green.
-- [ ] G6: dependency-cruiser passes (no framework in core).
-- [ ] G7: core ≤ 35KB gzip; WASM ready ≤ 100ms on mid-tier Android.
-- [ ] All unit + e2e tests green on Chromium; OPFS tests additionally on Safari (manual matrix note).
+- [x] G1: no long tasks > 16ms during the 30s heavy workload — `perf.yml` (nightly + manual) green.
+- [ ] G2: 500MB OPFS dataset written/reloaded/read byte-identical — 5MB Chrome CI (`opfs`) green; 500MB (`@g2-full`) + Safari 15.2+ = manual.
+- [x] G3: round-trip p95 < 16ms in CI — asserted in `smoke.spec.ts` (Chromium).
+- [x] G5: ESLint B-1 rule (no DOM in core) + bootstrap probe green.
+- [x] G6: dependency-cruiser passes (no framework in core) — in CI quality job.
+- [ ] G7: core ≤ 35KB gzip (CI size gate green); WASM ready ≤ 100ms — desktop bound asserted in e2e; mid-tier Android is manual (§8.4.4), pending.
+- [x] All unit + e2e tests green on Chromium; OPFS Safari tests pending the manual matrix.
 
 ---
 
@@ -152,7 +153,7 @@ For each phase release `vX.Y.0`:
 
 | Phase | Open question | Default if unresolved |
 |-------|--------------|----------------------|
-| 1 | Min Node version (20 vs 22) | Node ≥ 20 LTS |
+| 1 | Min Node version (20 vs 22) | **Resolved → Node ≥ 22** (CI runs on 22; dependency-cruiser requires `^22||^24||>=26`) |
 | 1 | Worker count default (2 vs 4) | 2 (configurable) |
 | 2 | Sync endpoint schema versioning | Envelope gains `schemaVersion: 1` |
 | 3 | Daemon distribution (installer vs bundled) | Documented; installer out of core scope |

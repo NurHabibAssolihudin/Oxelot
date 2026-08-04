@@ -17,6 +17,8 @@
 - TypeScript ≥ 5.4.
 - Rust ≥ 1.75, target `wasm32-unknown-unknown`; wasm-pack ≥ 0.12.
 
+> Actual as of v0.1.0 (deviation → ADR-05): the WASM crate builds to `wasm32-wasip1` with **zig 0.16** as the C compiler (no wasm-pack / wasm-bindgen); `wasm32-wasi` was removed in rustc 1.97. See docs/08 §8.1 for the working toolchain.
+
 ---
 
 ## 3.2 Architectural Patterns
