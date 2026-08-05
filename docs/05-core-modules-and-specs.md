@@ -397,6 +397,8 @@ export type OxelotEvent =
 | `ERR_HW_GESTURE_REQUIRED` | API needs a user gesture |
 | `ERR_SYNC_NETWORK` | Transient network failure during flush |
 | `ERR_SYNC_REJECTED` | Permanent HTTP 4xx / schema rejection |
+| `ERR_DB_DISABLED` | SQLite sub-facade disabled (`dbEnabled: false`) |
+| `ERR_DB_SQL` | SQLite statement failed (WASM layer) |
 | `ERR_PERMISSION_DENIED` | Daemon capability not granted |
 | `ERR_UNKNOWN` | Unclassified failure |
 

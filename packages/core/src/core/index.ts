@@ -3,7 +3,7 @@ import type { WorkerInitConfig } from './pool/pool'
 import { PooledDatabase } from './db'
 import { PlatformHardwareBridge } from './hardware'
 import type { HardwareBridge } from './hardware'
-import { PersistentSyncQueue, FetchSyncDelivery } from './sync'
+import { PersistentSyncQueue, FetchSyncDelivery, WebLock, SYNC_TAG } from './sync'
 import type { SyncService, KvLike, OxelotMutation, SyncState } from './sync'
 import { oxError } from '../errors'
 import type { OxelotEvent, DatabaseFacade } from './types'
@@ -24,6 +24,8 @@ export interface OxelotConfig {
   storageBackend?: StorageBackend
   sync?: SyncConfig
   registerSW?: boolean
+  /** Service-worker script URL. Default './sw.js' (copy `@oxelot/core/dist/sw.js`). */
+  swUrl?: string
   features?: {
     daemon?: boolean
     periodicSync?: boolean
@@ -107,6 +109,12 @@ export class Oxelot {
   readonly sourceTab: string
   private readonly broadcast: StorageBroadcast
   private readonly listeners = new Set<(ev: OxelotEvent) => void>()
+  private readonly onlineHandler = (): void => {
+    void this.sync.flush()
+  }
+  private readonly swUrl: string
+  private readonly serverUrl: string | undefined
+  private swRegistered = false
   private readyEmitted = false
   private disposed = false
 
@@ -123,6 +131,11 @@ export class Oxelot {
     this.hardware = new PlatformHardwareBridge()
     this.broadcast = new StorageBroadcast()
     this.sourceTab = getSourceTab()
+    this.swUrl = config.swUrl ?? './sw.js'
+    this.serverUrl = config.sync?.serverUrl
+    sync.onStateChange((state) => {
+      if (!this.disposed) this.emit({ type: 'sync-state', state })
+    })
     pool.onEvent((ev) => {
       if (ev.type === 'worker-error') {
         this.emit(ev)
@@ -162,12 +175,67 @@ export class Oxelot {
 
     const sync: SyncService =
       config.sync !== undefined
-        ? new PersistentSyncQueue(new WorkerKv(pool), new FetchSyncDelivery({ serverUrl: config.sync.serverUrl }))
+        ? new PersistentSyncQueue(
+            new WorkerKv(pool),
+            new FetchSyncDelivery({ serverUrl: config.sync.serverUrl }),
+            new WebLock((globalThis as unknown as { navigator?: Navigator }).navigator?.locks),
+          )
         : new NoopSync()
 
     const oxelot = new Oxelot(pool, backend, sync, config)
     oxelot.readyEmitted = true
+    if (typeof globalThis.addEventListener === 'function') {
+      globalThis.addEventListener('online', oxelot.onlineHandler)
+    }
+    if (config.registerSW === true) void oxelot.registerServiceWorker()
     return oxelot
+  }
+
+  /**
+   * Register the bundled service worker (M2.1). Registers `swUrl` (default
+   * `./sw.js`; consumers copy `@oxelot/core/dist/sw.js` into their public
+   * directory). When a `sync` config is present, sends the server URL to the SW
+   * and registers the `oxelot-sync` one-shot background sync tag so the SW
+   * drains the shared queue on connectivity restore. Idempotent; registration
+   * failure never breaks the app.
+   */
+  async registerServiceWorker(): Promise<void> {
+    if (this.swRegistered) return
+    this.swRegistered = true
+    const nav = (globalThis as unknown as { navigator?: Navigator }).navigator
+    if (typeof nav === 'undefined' || !('serviceWorker' in nav)) return
+    try {
+      const registration = await nav.serviceWorker.register(this.swUrl, { type: 'module' })
+      if (this.serverUrl !== undefined) {
+        const configMessage = (): { type: string; serverUrl: string } => ({
+          type: 'oxelot-config',
+          serverUrl: this.serverUrl as string,
+        })
+        const sendConfig = (): void => {
+          const sw = registration.active
+          if (sw) sw.postMessage(configMessage())
+        }
+        // Wait for an active worker before wiring config: posting into a
+        // not-yet-activated registration drops the message (no SW context exists
+        // to receive it). skipWaiting/clients.claim activate promptly.
+        const ready = await nav.serviceWorker.ready
+        const active = ready.active
+        if (active) active.postMessage(configMessage())
+        nav.serviceWorker.addEventListener('controllerchange', sendConfig)
+        if ((registration as unknown as { sync?: { register(tag: string): Promise<void> } }).sync) {
+          try {
+            await (registration as unknown as { sync?: { register(tag: string): Promise<void> } }).sync?.register(
+              SYNC_TAG,
+            )
+          } catch {
+            // Background Sync unsupported (Safari/older Chrome): the page-side
+            // `online` listener still triggers flush (see `Oxelot.enqueue`).
+          }
+        }
+      }
+    } catch {
+      // SW registration failure must not break the app (registerSW is opt-in).
+    }
   }
 
   on(cb: (ev: OxelotEvent) => void): () => void {
@@ -181,11 +249,19 @@ export class Oxelot {
     this.disposed = true
     this.listeners.clear()
     this.broadcast.dispose()
+    if (typeof globalThis.removeEventListener === 'function') {
+      globalThis.removeEventListener('online', this.onlineHandler)
+    }
     await this.pool.dispose()
   }
 
   static enqueue(ox: Oxelot, m: OxelotMutation): Promise<void> {
-    return ox.sync.enqueue(m)
+    return ox.sync.enqueue(m).then(() => {
+      // §6.3.1: flush immediately when online; the SW/online listener handles
+      // the offline→online transition. flush() is lock-guarded + backoff-aware.
+      const nav = (globalThis as unknown as { navigator?: Navigator }).navigator
+      if (typeof nav !== 'undefined' && nav.onLine) void ox.sync.flush()
+    })
   }
 
   private emit(ev: OxelotEvent): void {

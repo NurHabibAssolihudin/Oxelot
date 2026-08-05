@@ -7,6 +7,8 @@ export interface OxelotMutation {
   createdAt: number
   attempts: number
   lastError?: string
+  /** Epoch ms after which the next delivery attempt is due. Absent/null = due now. */
+  nextRetryAt?: number
 }
 
 export type SyncState =
