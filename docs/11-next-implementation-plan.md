@@ -104,6 +104,10 @@ but must be green before the v0.2.0 release gate.
 
 | 4.1 | ✅ `sync/capabilities.ts` `registerPeriodicSync` (never throws; missing API / rejection = logged no-op); SW `periodicsync` handler on `SYNC_TAG`; `features.periodicSync: boolean|number` (default 12 h) | `capabilities.test.ts` (5) + `periodic-sync.spec.ts` 4.2 |
 | 4.2 | ✅ `Oxelot.syncCapabilities()` / `detectSyncCapabilities` truth table | `capabilities.test.ts` (4) + `periodic-sync.spec.ts` 4.1 (live parity) |
+| 5.1 | ✅ `hardware/native.ts` `acquireNative` (WebUSB/Bluetooth `requestDevice`, `NDEFReader.scan`, Wake Lock, FSA picker, Vibration) + `toHardwareError` mapping (`ERR_HW_GESTURE_REQUIRED`/`ERR_HW_DENIED`) | `hardware.test.ts` (unit truth table, 7 scenarios + mapping) |
+| 5.2 | ✅ `hardware.spec.ts` truth table + `ERR_HW_UNSUPPORTED` on all three engines | e2e chromium+webkit (default) + firefox via `PW_MATRIX=1` (6 passed) |
+
+**Slice 5.2 matrix note:** Firefox is not part of the default suite (not installed locally). Run the 3-browser truth table with `PW_MATRIX=1 npx playwright install firefox && PW_MATRIX=1 npx playwright test packages/e2e/hardware.spec.ts`. Observed desktop truth tables are recorded in `hardware.spec.ts` (`EXPECTED`).
 
 ### Release — v0.2.0 (per Chapter 2 §2.5)
 

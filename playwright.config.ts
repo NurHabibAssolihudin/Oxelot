@@ -12,7 +12,12 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { browserName: 'chromium' } },
-    { name: 'webkit', testMatch: /opfs/, use: { browserName: 'webkit' } },
+    { name: 'webkit', testMatch: /opfs|hardware/, use: { browserName: 'webkit' } },
+    // Optional 3-browser matrix (M2.5 slice 5.2): run with
+    // `PW_MATRIX=1 npx playwright install firefox && PW_MATRIX=1 npx playwright test`.
+    ...(process.env.PW_MATRIX === '1'
+      ? [{ name: 'firefox', testMatch: /hardware/, use: { browserName: 'firefox' } }]
+      : []),
   ],
   webServer: {
     command: 'npx vite --port 5199 --strictPort',

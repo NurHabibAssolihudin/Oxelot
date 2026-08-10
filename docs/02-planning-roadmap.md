@@ -81,12 +81,12 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 
 ### Milestone M2.5 — Fugu hardware bridge (`/hardware`)
 **Deliverables:** capability detection (`HardwareCapabilities`), wrappers for Web NFC/USB/Bluetooth/Wake Lock/File System Access, stub fallbacks, permission request flow (`acquire`).
-**Slice:** `capabilities()` truth table tests across 3 browser profiles; manual NFC/USB matrix.
+**Slice:** `capabilities()` truth table tests across 3 browser profiles; manual NFC/USB matrix. ✅ slices 5.1–5.2 (`hardware.test.ts` mapping truth table; `hardware.spec.ts` green on Chromium+WebKit+Firefox via `PW_MATRIX=1`); native permission prompts themselves are the manual NFC/USB matrix (Ch. 8 §8.4).
 
 ### M2 Exit Criteria
 - [x] G4 soak test green (@perf e2e: 100k offline backlog drained exactly-once in 5.5 m, zero dead letters).
 - [x] Cross-tab lock correctness under Playwright multi-context (web-locks.spec.ts 3.1–3.3: storage write guard, release→invalidation ≤100 ms, exactly one active flusher).
-- [x] Capability detection matches expected truth table on Chromium/Firefox/WebKit (`syncCapabilities()` parity on Chromium e2e; WebKit/Firefox presence checks manual, §8.4 — periodic-sync.spec.ts 4.1).
+- [x] Capability detection matches expected truth table on Chromium/Firefox/WebKit (`hardware.spec.ts` 5.2: 6/6 across all three engines via `PW_MATRIX=1`; `syncCapabilities()` parity on Chromium e2e — periodic-sync.spec.ts 4.1).
 - [ ] No regression on M1 criteria (full suite re-run).
 
 ---

@@ -1,4 +1,6 @@
 import { oxError } from '../../errors'
+import { acquireNative } from './native'
+import type { HardwareEnv } from './native'
 
 export type HardwareCapability =
   | 'nfc'
@@ -38,6 +40,32 @@ const UNSET: HardwareCapabilities = {
 
 export class PlatformHardwareBridge implements HardwareBridge {
   private detected: HardwareCapabilities | null = null
+  private readonly releaseHandles = new Map<HardwareCapability, () => Promise<void>>()
+
+  private env(): HardwareEnv {
+    const nav = navigator as Navigator & {
+      usb?: unknown
+      bluetooth?: unknown
+      wakeLock?: unknown
+      vibrate?: (pattern: number | number[]) => boolean
+    }
+    const win = globalThis as typeof globalThis & {
+      NDEFReader?: new () => { scan(options?: unknown): Promise<void> }
+      showOpenFilePicker?: (options?: unknown) => Promise<unknown>
+    }
+    return {
+      nav: {
+        usb: nav.usb as { requestDevice(options: unknown): Promise<unknown> } | undefined,
+        bluetooth: nav.bluetooth as { requestDevice(options: unknown): Promise<unknown> } | undefined,
+        wakeLock: nav.wakeLock as { request(name: string): Promise<{ release(): Promise<void> } | undefined> } | undefined,
+        vibrate: (pattern) => nav.vibrate(pattern),
+      },
+      win: {
+        NDEFReader: win.NDEFReader,
+        showOpenFilePicker: win.showOpenFilePicker,
+      },
+    }
+  }
 
   async capabilities(): Promise<HardwareCapabilities> {
     if (this.detected) return this.detected
@@ -75,14 +103,20 @@ export class PlatformHardwareBridge implements HardwareBridge {
     if (!this.isAvailable(cap)) {
       throw oxError('ERR_HW_UNSUPPORTED', `hardware capability "${cap}" is not available`)
     }
-    // Native prompts (WebUSB requestDevice, Web NFC scan, Wake Lock) are
-    // triggered by the consumer with the actual device APIs; acquire() here
-    // only asserts availability so callers can branch. Actual invocation
-    // remains consumer-driven.
+    // Map onto the native gesture-gated prompt (§5.3.3): WebUSB/Bluetooth
+    // requestDevice, NDEFReader.scan (NFC), Wake Lock request, File System
+    // Access picker, Vibration. Rejections map to ERR_HW_GESTURE_REQUIRED /
+    // ERR_HW_DENIED via toHardwareError.
+    const handle = await acquireNative(cap, this.env())
+    if (handle.release) this.releaseHandles.set(cap, handle.release)
   }
 
   async release(cap: HardwareCapability): Promise<void> {
-    void cap
+    const release = this.releaseHandles.get(cap)
+    if (release) {
+      this.releaseHandles.delete(cap)
+      await release()
+    }
   }
 }
 
