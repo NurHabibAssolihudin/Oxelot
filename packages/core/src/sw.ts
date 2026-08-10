@@ -100,3 +100,14 @@ swScope.addEventListener('sync', (event) => {
   if (e.tag !== SYNC_TAG || typeof serverUrl !== 'string') return
   e.waitUntil(getSync(serverUrl).flush())
 })
+
+// Periodic background sync (M2.4): the page registers the same `oxelot-sync` tag
+// with `registration.periodicSync.register` (only when `features.periodicSync` is
+// on and the engine supports it). The SW drains the shared queue on each fire —
+// the `oxelot-sync` Web Lock still admits exactly one active flusher (§5.2.5).
+// Engines without periodic sync simply never fire this event (no-op fallback).
+swScope.addEventListener('periodicsync', (event) => {
+  const e = event as Event & { tag: string; waitUntil(p: Promise<unknown>): void }
+  if (e.tag !== SYNC_TAG || typeof serverUrl !== 'string') return
+  e.waitUntil(getSync(serverUrl).flush())
+})

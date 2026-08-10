@@ -24,6 +24,14 @@ Recorded per Chapter 8 §8.4.4 (manual device matrix) and the release procedure
 | Web Locks: `ifAvailable` co-ordination unreliable | Some Chromium builds grant `ifAvailable: true` requests even while another realm holds the lock, so flush arbitration uses **blocking** `oxelot-sync` acquisition (exactly one active flusher) and the `oxelot-storage:<name>` guard uses blocking locks. `ifAvailable`/skip semantics exist as diagnostics only. | M2.3 §5.2.5, slice 0.2 caveat |
 | Web Locks availability in realms | The storage guard and SW flush lock degrade to no-ops where `navigator.locks` is unavailable (Node, and engine/worker combinations lacking Web Locks); correctness then falls back to IDB transaction atomicity + consumer idempotency by `id`. | `core/storage/locks.ts`, `sw.ts` |
 
+## Background sync (M2.4)
+
+| Limitation | Detail | Tracking |
+|------------|--------|----------|
+| `periodicsync` registration rejected in CI | Chrome grants periodic background sync only to installed/PWA-permitted origins with engagement; headless `registration.periodicSync.register()` rejects and is swallowed as a logged no-op (`console.info`). CI asserts the registration guard never breaks boot + live `syncCapabilities()` parity; real periodic firing is manual (Ch. 8 §8.4). | `periodic-sync.spec.ts` 4.1–4.2 |
+| No periodic sync on Firefox/Safari | `registration.periodicSync` is absent → feature degrades to a no-op; connectivity-restore sync (`registration.sync`) and the page `online` flush still cover offline delivery. | §5.2.7 |
+| Engine min-interval clamping | The configured interval is a *minimum*; engines enforce their own larger cadence. Consumers must not rely on a faster effective rate. | §5.2.7 |
+
 ## Platform / browser matrix (manual, not automated)
 
 | Platform | Coverage | Notes |

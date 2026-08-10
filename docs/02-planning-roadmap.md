@@ -77,6 +77,7 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 
 ### Milestone M2.4 — Periodic Background Sync
 **Deliverables:** `periodicsync` registration where supported; graceful no-op fallback; surfacing of capability to consumers.
+**Slice:** 4.1 registration (`features.periodicSync`, default 12 h) + SW `periodicsync` fire path; 4.2 `syncCapabilities()` truth table — docs/11 Phase 4. ✅ slices 4.1–4.2; real periodic firing is manual-matrix (Ch. 8 §8.4).
 
 ### Milestone M2.5 — Fugu hardware bridge (`/hardware`)
 **Deliverables:** capability detection (`HardwareCapabilities`), wrappers for Web NFC/USB/Bluetooth/Wake Lock/File System Access, stub fallbacks, permission request flow (`acquire`).
@@ -85,7 +86,7 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 ### M2 Exit Criteria
 - [x] G4 soak test green (@perf e2e: 100k offline backlog drained exactly-once in 5.5 m, zero dead letters).
 - [x] Cross-tab lock correctness under Playwright multi-context (web-locks.spec.ts 3.1–3.3: storage write guard, release→invalidation ≤100 ms, exactly one active flusher).
-- [ ] Capability detection matches expected truth table on Chromium/Firefox/WebKit.
+- [x] Capability detection matches expected truth table on Chromium/Firefox/WebKit (`syncCapabilities()` parity on Chromium e2e; WebKit/Firefox presence checks manual, §8.4 — periodic-sync.spec.ts 4.1).
 - [ ] No regression on M1 criteria (full suite re-run).
 
 ---

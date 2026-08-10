@@ -4,7 +4,12 @@ import { PooledDatabase } from './db'
 import { PlatformHardwareBridge } from './hardware'
 import type { HardwareBridge } from './hardware'
 import { PersistentSyncQueue, FetchSyncDelivery, WebLock, SYNC_TAG } from './sync'
-import type { SyncService, KvLike, OxelotMutation, SyncState } from './sync'
+import {
+  detectSyncCapabilities,
+  registerPeriodicSync,
+  PERIODIC_SYNC_DEFAULT_MIN_INTERVAL_MS,
+} from './sync'
+import type { SyncService, KvLike, OxelotMutation, SyncState, SyncCapabilities } from './sync'
 import { oxError } from '../errors'
 import type { OxelotEvent, DatabaseFacade } from './types'
 import type { StorageBackend, OxelotFile } from './storage'
@@ -28,7 +33,8 @@ export interface OxelotConfig {
   swUrl?: string
   features?: {
     daemon?: boolean
-    periodicSync?: boolean
+    /** `true` registers the `oxelot-sync` periodic tag at the default 12 h min interval; a number sets the min interval in ms (Chrome clamps to its own minimum). Unsupported engines degrade to a no-op. */
+    periodicSync?: boolean | number
   }
 }
 
@@ -42,6 +48,12 @@ export interface StorageFacade {
 }
 
 const WORKER_URL = /* @__PURE__ */ new URL('./worker.js', import.meta.url)
+
+/** `sync`/`periodicSync` are not part of the DOM lib typings used here. */
+type SyncRegistration = ServiceWorkerRegistration & {
+  sync?: { register(tag: string): Promise<void> }
+  periodicSync?: { register(tag: string, opts?: { minInterval: number }): Promise<void> }
+}
 
 class WorkerKv implements KvLike {
   constructor(private readonly pool: OxelotPool) {}
@@ -114,6 +126,8 @@ export class Oxelot {
   }
   private readonly swUrl: string
   private readonly serverUrl: string | undefined
+  private readonly periodicSync: boolean | number | undefined
+  private syncCaps: SyncCapabilities | null = null
   private swRegistered = false
   private readyEmitted = false
   private disposed = false
@@ -133,6 +147,7 @@ export class Oxelot {
     this.sourceTab = getSourceTab()
     this.swUrl = config.swUrl ?? './sw.js'
     this.serverUrl = config.sync?.serverUrl
+    this.periodicSync = config.features?.periodicSync
     sync.onStateChange((state) => {
       if (!this.disposed) this.emit({ type: 'sync-state', state })
     })
@@ -222,20 +237,46 @@ export class Oxelot {
         const active = ready.active
         if (active) active.postMessage(configMessage())
         nav.serviceWorker.addEventListener('controllerchange', sendConfig)
-        if ((registration as unknown as { sync?: { register(tag: string): Promise<void> } }).sync) {
+
+        // Surface capability + register tags on the actual registration. Both
+        // degrade to no-ops where unsupported (Safari/Firefox), never throwing.
+        const reg = registration as SyncRegistration
+        this.syncCaps = await detectSyncCapabilities(reg)
+        if (reg.sync) {
           try {
-            await (registration as unknown as { sync?: { register(tag: string): Promise<void> } }).sync?.register(
-              SYNC_TAG,
-            )
+            await reg.sync.register(SYNC_TAG)
           } catch {
             // Background Sync unsupported (Safari/older Chrome): the page-side
             // `online` listener still triggers flush (see `Oxelot.enqueue`).
           }
         }
+        const periodic = await registerPeriodicSync(reg, {
+          enabled: this.periodicSync,
+          defaultMinIntervalMs: PERIODIC_SYNC_DEFAULT_MIN_INTERVAL_MS,
+        })
+        if (periodic.registered) {
+          console.info(`[oxelot] periodic background sync active (tag "${SYNC_TAG}", min interval ${periodic.minIntervalMs} ms)`)
+        } else if (this.periodicSync && !periodic.error) {
+          console.info('[oxelot] periodic background sync unavailable (registration.periodicSync missing); no-op fallback')
+        } else if (this.periodicSync && periodic.error) {
+          console.info(`[oxelot] periodic background sync registration rejected (${periodic.error}); no-op fallback`)
+        }
       }
     } catch {
       // SW registration failure must not break the app (registerSW is opt-in).
     }
+  }
+
+  /**
+   * Report which background-sync mechanisms are available in this environment
+   * (M2.4 slice 4.2). `backgroundSync` ⇔ `registration.sync` (connectivity
+   * restore); `periodicSync` ⇔ `registration.periodicSync` (periodic cadence).
+   * Cached after the first call; never throws.
+   */
+  async syncCapabilities(): Promise<SyncCapabilities> {
+    if (this.syncCaps) return this.syncCaps
+    this.syncCaps = await detectSyncCapabilities()
+    return this.syncCaps
   }
 
   on(cb: (ev: OxelotEvent) => void): () => void {

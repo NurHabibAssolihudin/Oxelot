@@ -217,10 +217,18 @@ export interface SyncService {
 
 `sw.ts` (consumer-registered, or registered by `Oxelot.init` when `registerSW: true`):
 - Listens for `sync` events; calls `sync.flush()`.
+- Listens for `periodicsync` events (M2.4); only the `oxelot-sync` tag is honored — also calls `sync.flush()`.
 - Listens for `message` (`type: 'oxelot-sync'`) to trigger an explicit flush from a tab.
 - Never touches DOM (SW has none). Uses the same `SyncService` module (bundled into the SW build via the pool's SW variant).
 - Reads and writes the **same queue** as pages: the shared IndexedDB `oxelot`/`kv` store. The page-side queue (proxied through the worker pool) and the SW-side queue (`WorkerKv`) resolve to the same `IdbStorage` object store, so one flush from either context drains the same origin-wide queue (consumer idempotency by `id` guards concurrent drains). KV ops in both paths run under the `oxelot-storage:<key>` Web Lock (§5.2.5).
 - The SW's sync queue is constructed with the same `oxelot-sync` Web Lock the page-side queue uses, so a SW drain and a tab drain cannot run concurrently (single active flusher, §5.2.5).
+
+### 5.2.7 Periodic background sync (normative, M2.4)
+
+- **Opt-in.** `OxelotConfig.features.periodicSync` (default absent): `true` registers the `oxelot-sync` periodic tag at a default 12 h minimum interval; a number sets the minimum interval in ms. Browsers may clamp to their own larger minimum.
+- **Registration.** Page-side (`registerServiceWorker`): for the active registration, `registration.periodicSync.register(SYNC_TAG, { minInterval })`. Only attempted when the flag is on and `registration.periodicSync` exists; both conditions failing is a **graceful no-op** — the app, SW, and one-shot sync are unaffected. All registration rejections are swallowed and reported via `console.info`, never thrown.
+- **Fire path.** The SW's `periodicsync` handler flushes the shared queue for the matching tag under the `oxelot-sync` Web Lock (§5.2.5), exactly like a `sync` or relay flush.
+- **Surfacing.** `Oxelot.syncCapabilities(): Promise<{ backgroundSync, periodicSync }>` (M2.4 slice 4.2) reports which mechanisms the environment exposes on the registration: `sync` ⇔ one-shot (connectivity restore), `periodicSync` ⇔ periodic cadence. Never throws; returns `false` where no usable registration exists. Independent of the feature flag (it describes the environment, not whether the app registered).
 
 ---
 
@@ -332,7 +340,8 @@ export interface OxelotConfig {
   registerSW?: boolean
   features?: {
     daemon?: boolean          // Phase 3
-    periodicSync?: boolean    // Phase 2.4
+    /** `true` → `oxelot-sync` periodic tag at default 12 h min interval; `number` → min interval ms (engine may clamp). Unsupported = no-op (§5.2.7). */
+    periodicSync?: boolean | number
   }
 }
 ```
@@ -347,6 +356,8 @@ export class Oxelot {
   readonly sync: SyncFacade
   readonly hardware: HardwareBridge
   readonly pool: OxelotPool
+  /** Report background-sync mechanisms the environment exposes (§5.2.7). Never throws. */
+  syncCapabilities(): Promise<SyncCapabilities>
   /** Subscribe to core events (storage watchers, sync state, worker errors). */
   on(cb: (ev: OxelotEvent) => void): () => void
   /** Dispose: terminate workers, close handles, release locks. Idempotent. */

@@ -100,6 +100,11 @@ but must be green before the v0.2.0 release gate.
 | 5.1 | `acquire()` native mapping + `ERR_HW_DENIED`/`ERR_HW_GESTURE_REQUIRED` | unit truth table |
 | 5.2 | Truth-table e2e across Chromium/Firefox/WebKit | e2e matrix |
 
+**Slice 4.1 caveat:** real `periodicsync` events cannot be fired in CI (Chrome grants them only for installed/PWA-permitted origins with engagement; headless `register()` rejects). CI covers: registration-guard execution (no throw on boot), the identical flush path via the `oxelot-sync` relay, and live parity of `syncCapabilities()` with `registration.sync`/`periodicSync` presence. Real periodic firing stays on the manual matrix (Ch. 8 §8.4).
+
+| 4.1 | ✅ `sync/capabilities.ts` `registerPeriodicSync` (never throws; missing API / rejection = logged no-op); SW `periodicsync` handler on `SYNC_TAG`; `features.periodicSync: boolean|number` (default 12 h) | `capabilities.test.ts` (5) + `periodic-sync.spec.ts` 4.2 |
+| 4.2 | ✅ `Oxelot.syncCapabilities()` / `detectSyncCapabilities` truth table | `capabilities.test.ts` (4) + `periodic-sync.spec.ts` 4.1 (live parity) |
+
 ### Release — v0.2.0 (per Chapter 2 §2.5)
 
 1. Freeze API surface; ADR review of every deviation (D1–D10).
