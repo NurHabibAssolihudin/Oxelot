@@ -83,7 +83,7 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 **Slice:** `capabilities()` truth table tests across 3 browser profiles; manual NFC/USB matrix.
 
 ### M2 Exit Criteria
-- [ ] G4 soak test green.
+- [x] G4 soak test green (@perf e2e: 100k offline backlog drained exactly-once in 5.5 m, zero dead letters).
 - [ ] Cross-tab lock correctness under Playwright multi-context.
 - [ ] Capability detection matches expected truth table on Chromium/Firefox/WebKit.
 - [ ] No regression on M1 criteria (full suite re-run).

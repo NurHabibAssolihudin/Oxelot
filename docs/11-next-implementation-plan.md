@@ -42,7 +42,7 @@ but must be green before the v0.2.0 release gate.
 | Milestone | Status | Missing |
 |-----------|--------|---------|
 | M2.1 SW relay | ✅ | slices 1.1–1.4 (v0.1.1): relay, `sync` listener, shared queue |
-| M2.2 Background Sync queue | Partial | `peek` ✅, atomic pop ✅, scheduled backoff ✅, exactly-once dedupe ✅ (slices 1.4/2.1/2.2, v0.1.1); remaining: G4 soak (slice 2.3) |
+| M2.2 Background Sync queue | ✅ | `peek`, atomic pop, scheduled backoff, exactly-once dedupe (1.4/2.1/2.2) + G4 soak 100k (2.3) — all v0.1.1 |
 | M2.3 Web Locks | Stub only | integration into flush + storage writes, lock-release invalidation, 2-context e2e |
 | M2.4 Periodic Background Sync | None | `periodicsync` registration + no-op fallback + capability surfacing |
 | M2.5 Hardware bridge | Partial | native `acquire()` mapping, permission flow, 3-browser truth table |
@@ -79,7 +79,7 @@ but must be green before the v0.2.0 release gate.
 |-------|------|-------|------|
 | 2.1 | `peek()` + atomic pop-on-success (no double-deliver) | `core/sync/queue.ts` | unit | ✅ `peek()`, pop-on-success, checkpoint persistence `queue.test.ts` |
 | 2.2 | Exactly-once by stable `id` (idempotent replay) | `core/sync/*` | unit | ✅ enqueue dedupe by `id` `queue.test.ts` |
-| 2.3 | G4 soak: 100k envelopes offline → restore → ≥99% delivered ≤24 h | `packages/e2e/soak.spec.ts` | e2e `@perf` + manual | ⏳ not started |
+| 2.3 | G4 soak: 100k envelopes offline → restore → ≥99% delivered ≤24 h | `packages/e2e/soak.spec.ts` | e2e `@perf` + manual | ✅ 100k delivered exactly-once in 5.5 m, 0 dead letters (v0.1.1); 24 h timing on manual matrix (Ch. 8 §8.4) |
 
 ### Phase 3 — M2.3 Web Locks end-to-end
 
