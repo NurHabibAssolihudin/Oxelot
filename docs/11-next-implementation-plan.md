@@ -43,7 +43,7 @@ but must be green before the v0.2.0 release gate.
 |-----------|--------|---------|
 | M2.1 SW relay | ✅ | slices 1.1–1.4 (v0.1.1): relay, `sync` listener, shared queue |
 | M2.2 Background Sync queue | ✅ | `peek`, atomic pop, scheduled backoff, exactly-once dedupe (1.4/2.1/2.2) + G4 soak 100k (2.3) — all v0.1.1 |
-| M2.3 Web Locks | Stub only | integration into flush + storage writes, lock-release invalidation, 2-context e2e |
+| M2.3 Web Locks | ✅ | `oxelot-storage:<name>` write/read guard, blocking `oxelot-sync` flush serialization (page+SW), release→sibling invalidation ≤100ms (3.1–3.3, v0.1.1) |
 | M2.4 Periodic Background Sync | None | `periodicsync` registration + no-op fallback + capability surfacing |
 | M2.5 Hardware bridge | Partial | native `acquire()` mapping, permission flow, 3-browser truth table |
 
@@ -56,7 +56,9 @@ but must be green before the v0.2.0 release gate.
 | Slice | Task | Files | Test gate | Status |
 |-------|------|-------|-----------|--------|
 | 0.1 | Worker crash respawn + once re-dispatch of in-flight requests | `core/pool/pool.ts`, `core/pool/bridge.ts` | unit: kill worker mid-flight → request resolves/rejects; respawn count asserted | ✅ `pool-crash.test.ts` (4 tests) |
-| 0.2 | Web Lock `oxelot-sync` (`ifAvailable`, 30 s) around `flush()` | `core/sync/queue.ts`, `core/sync/web-lock.ts`, `core/index.ts` | unit: lock-held → flush skipped | ✅ `queue.test.ts` (3 tests) |
+| 0.2 | Web Lock `oxelot-sync` (blocking, 30 s) around `flush()` — exactly one active flusher | `core/sync/queue.ts`, `core/sync/web-lock.ts`, `core/index.ts` | unit: contention serializes; one flusher drains | ✅ `queue.test.ts` (3 tests); see caveat |
+
+**Slice 0.2 caveat (M2.3):** Web Locks coordinate correctly across realms (tab, dedicated worker, service worker, sibling tab) for **blocking** acquisitions, but Chromium grants `ifAvailable: true` requests even while another realm holds the same lock, so skip-based arbitration is unreliable. `flush()` therefore uses **blocking** acquisition of `oxelot-sync`: concurrent flushers queue behind the active drain and then no-op on the empty queue — exactly one flusher is active at a time and no envelope is double-delivered.
 | 0.3 | Scheduled backoff: `nextRetryAt` persisted on the envelope; flush only delivers due envelopes | `core/sync/envelope.ts`, `core/sync/queue.ts`, `core/sync/scheduler.ts` | unit: exponential 30s→1m→2m→4m… capped at 1h (per existing `nextRetryDelayMs`); due vs not-due selection; `nextRetryAt` survives reload | ✅ `queue.test.ts` (4 tests) |
 | 0.4 | Bridge `sync-state` to `Oxelot.on()` (fulfill §5.5.4) | `core/index.ts` | unit: event fan-out | ✅ wired in facade |
 | 0.5 | Auto-flush: `online` listener + post-enqueue flush (respecting lock + backoff) | `core/index.ts`, `core/sync/queue.ts` | unit: `online` triggers flush | ✅ `Oxelot.enqueue` + `online` listener |
@@ -69,7 +71,7 @@ but must be green before the v0.2.0 release gate.
 | 1.1 | `Oxelot.init` registers the bundled SW when `registerSW: true` | `core/index.ts`, `sw.ts` | e2e: SW active; idempotent re-register | ✅ `sync-relay.spec.ts` 1.1 |
 | 1.2 | Tab↔SW message relay (`type: 'oxelot-sync'` → flush → result to tab) | `sw.ts` | e2e: tab-triggered flush | ✅ `sync-relay.spec.ts` 1.2 |
 | 1.3 | SW `sync` event listener → `flush()` | `sw.ts` | e2e: emulated offline→online | ✅ `sync-relay.spec.ts` 1.3 (see caveat below) |
-| 1.4 | Envelope queue shared with SW (Cache-API KV already exists) | `sw-kv.ts` | soak 10k | ✅ shared `oxelot`/`kv` store (D9→resolved); soak `sync-relay.spec.ts` 1.4 `@perf` + unit 10k |
+| 1.4 | Envelope queue shared with SW (shared IndexedDB `oxelot`/`kv` store) | `sw-kv.ts` | soak 10k | ✅ shared `oxelot`/`kv` store (D9→resolved); soak `sync-relay.spec.ts` 1.4 `@perf` + unit 10k |
 
 **Slice 1.3 caveat:** headless Chromium disables Background Sync even with `grantPermissions(['background-sync'])` and `--enable-features=BackgroundSync` (`registration.sync.register()` throws "Background Sync is disabled"). CI covers the identical flush path by driving `getSync().flush()` via the `oxelot-sync` relay message after an offline→online transition. Real `sync`-event firing is on the manual matrix (Ch. 8 §8.4).
 
@@ -83,11 +85,11 @@ but must be green before the v0.2.0 release gate.
 
 ### Phase 3 — M2.3 Web Locks end-to-end
 
-| Slice | Task | Gate |
-|-------|------|------|
-| 3.1 | Storage writes (file + KV) under `oxelot-storage:<name>` | unit + e2e two-tab |
-| 3.2 | `lockrelease` → cache invalidation in sibling tabs (via `storage-change`) | e2e ≤ 100 ms |
-| 3.3 | Contention: two contexts, exactly one active flusher | e2e |
+| Slice | Task | Gate | Status |
+|-------|------|------|--------|
+| 3.1 | Storage writes (file + KV) under `oxelot-storage:<name>` | unit + e2e two-tab | ✅ `storage-lock.test.ts` + `web-locks.spec.ts` 3.1 |
+| 3.2 | `lockrelease` → cache invalidation in sibling tabs (via `storage-change`) | e2e ≤ 100 ms | ✅ `web-locks.spec.ts` 3.2 |
+| 3.3 | Contention: two contexts, exactly one active flusher | e2e | ✅ `web-locks.spec.ts` 3.3 (blocking `oxelot-sync`; see 0.2 note) |
 
 ### Phase 4 — M2.4 Periodic sync, then M2.5 Hardware
 

@@ -182,7 +182,7 @@ export interface SyncService {
 - **Exactly-once by stable `id`:** `enqueue` drops an envelope whose `id` is already pending. Re-enqueueing the same `id` after success reappends it (a re-created mutation is a new contract).
 - **Atomic pop-on-success:** an envelope is removed from the queue only *after* the server acknowledges delivery (`2xx`). It is never removed before a successful delivery attempt.
 - **Checkpointed drains:** long flushes persist the kept prefix + not-yet-attempted tail every `checkpoint` successes, so a crash loses at most `checkpoint` already-delivered envelopes.
-- **Persistence:** the queue is stored in the shared Cache-API `oxelot/kv` store (page and service worker read the same store), not in memory.
+- **Persistence:** the queue is stored in the shared IndexedDB `oxelot`/`kv` store (page via the worker pool and service worker read the same object store), not in memory.
 
 ### 5.2.4 State machine (normative)
 
@@ -208,9 +208,9 @@ export interface SyncService {
 
 ### 5.2.5 Web Locks integration (normative)
 
-- All flush work acquires the named lock `oxelot-sync` with `ifAvailable: true`.
-- Lock not available ⇒ another tab/SW is flushing; exit gracefully (no concurrent drain).
-- Storage writes across tabs acquire `oxelot-storage:<file>` locks; `release` events trigger cache invalidation in other tabs (Chapter 6 §6.3.5).
+- All flush work acquires the exclusive `oxelot-sync` lock **with blocking acquisition** so that exactly one flusher (page, sibling tab, or service worker — same origin, shared lock set) is active at a time. A concurrent flusher queues behind the active drain and then no-ops on the empty queue; no envelope is delivered twice. (`ifAvailable`/skip-based arbitration is not used: some Chromium builds grant `ifAvailable` requests even under cross-realm contention.)
+- Storage writes AND reads run under the exclusive `oxelot-storage:<name>` lock (same origin, all realms — worker file/KV ops, service-worker KV ops), so writes to the shared queue/DB image and multi-step file writes serialize, and readers never observe a partially-written value. Lock namespaced per file/KV key; no-op (degraded) where Web Locks are unavailable.
+- After a locked write releases, a `storage-change` fires and propagates to sibling tabs (Chapter 6 §6.2.1) in time for cache invalidation — measured ≤100 ms (M1.5/M2.3 e2e).
 - Lock timeouts: 30s max; release via `finally`.
 
 ### 5.2.6 Service worker contract
@@ -219,7 +219,8 @@ export interface SyncService {
 - Listens for `sync` events; calls `sync.flush()`.
 - Listens for `message` (`type: 'oxelot-sync'`) to trigger an explicit flush from a tab.
 - Never touches DOM (SW has none). Uses the same `SyncService` module (bundled into the SW build via the pool's SW variant).
-- Reads and writes the **same queue** as pages: the shared Cache-API `oxelot/kv` store is opened via `importCache` by both page and SW (imported by `core/index.ts`). Static assets live in a separate `oxelot/cache-assets` cache so asset versioning never collides with queue data.
+- Reads and writes the **same queue** as pages: the shared IndexedDB `oxelot`/`kv` store. The page-side queue (proxied through the worker pool) and the SW-side queue (`WorkerKv`) resolve to the same `IdbStorage` object store, so one flush from either context drains the same origin-wide queue (consumer idempotency by `id` guards concurrent drains). KV ops in both paths run under the `oxelot-storage:<key>` Web Lock (§5.2.5).
+- The SW's sync queue is constructed with the same `oxelot-sync` Web Lock the page-side queue uses, so a SW drain and a tab drain cannot run concurrently (single active flusher, §5.2.5).
 
 ---
 

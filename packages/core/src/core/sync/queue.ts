@@ -15,6 +15,7 @@ export interface KvLike {
 
 /** Structural lock manager; satisfied by `WebLock`. */
 export interface SyncLock {
+  withLock<T>(name: string, fn: () => Promise<T>): Promise<T>
   tryWithLock<T>(name: string, fn: () => Promise<T>): Promise<{ acquired: boolean; result?: T }>
 }
 
@@ -76,9 +77,13 @@ export class PersistentSyncQueue implements SyncService {
     this.flushing = true
     try {
       if (this.lock) {
-        const held = await this.lock.tryWithLock(SYNC_LOCK, () => this.drain())
-        if (!held.acquired) return { delivered: 0, deadLetters: 0 }
-        return held.result ?? { delivered: 0, deadLetters: 0 }
+        // Blocking acquisition of the exclusive `oxelot-sync` lock: while a
+        // drain runs in any realm (another tab, the service worker), exactly one
+        // flusher is active. A concurrent flusher waits, then no-ops on the now
+        // empty queue — this is what prevents double-delivering the shared
+        // queue. (Chromium grants `ifAvailable` requests even under contention,
+        // so skip-based arbitration is not reliable cross-realm; blocking is.)
+        return await this.lock.withLock(SYNC_LOCK, () => this.drain())
       }
       return await this.drain()
     } finally {

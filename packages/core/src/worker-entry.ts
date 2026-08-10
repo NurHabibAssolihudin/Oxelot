@@ -2,6 +2,7 @@ import { handleMessages, emitEvent } from './core/pool/worker-handler'
 import { createWorkerStorage } from './core/storage'
 import type { WorkerStorageFacade } from './core/storage'
 import type { StorageBackend } from './core/storage'
+import { createStorageGuard } from './core/storage/locks'
 import { loadWasm } from './wasm'
 import type { SqliteWasm } from './wasm'
 
@@ -10,6 +11,18 @@ let DB_BACKEND: StorageBackend | undefined
 let SOURCE_TAB = ''
 let storagePromise: Promise<WorkerStorageFacade> | null = null
 let dbPromise: Promise<{ wasm: SqliteWasm; imageFile: string }> | null = null
+
+// Cross-realm storage guard (M2.3): every file/KV write and read in the worker
+// realm runs under `oxelot-storage:<name>` (Web Locks), the same lock set the
+// service worker and sibling tabs use, so writes to the shared queue and the DB
+// image file serialize across realms. No-op when Web Locks are unavailable.
+const storageGuard = createStorageGuard(
+  (globalThis as unknown as { navigator?: { locks?: LockManager } }).navigator?.locks,
+)
+
+async function guarded<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  return storageGuard.withLock(name, fn)
+}
 
 function notify(key: string): void {
   const message = { key, sourceTab: SOURCE_TAB }
@@ -52,7 +65,9 @@ function db(): Promise<{ wasm: SqliteWasm; imageFile: string }> {
       const imageFile = dbImageFile()
       let image: Uint8Array = new Uint8Array(0)
       try {
-        image = (await withFile(imageFile, 'read', async (f) => f.readBytes(0, await f.size()))) as Uint8Array
+        image = (await guarded(imageFile, () =>
+          withFile(imageFile, 'read', async (f) => f.readBytes(0, await f.size())),
+        )) as Uint8Array
       } catch {
         // No persisted image yet; start with an empty database.
       }
@@ -92,33 +107,39 @@ handleMessages({
     return null
   },
   'storage.readBytes': typed(async ({ name, offset, length }: { name: string; offset: number; length: number }) => {
-    return withFile(name, 'read', async (f) => {
-      const data = await f.readBytes(offset, length)
-      return data.buffer
-    })
+    return guarded(name, () =>
+      withFile(name, 'read', async (f) => {
+        const data = await f.readBytes(offset, length)
+        return data.buffer
+      }),
+    )
   }),
   'storage.writeBytes': typed(
     async ({ name, offset, data }: { name: string; offset: number; data: Uint8Array }) => {
-      await withFile(name, 'readwrite', async (f) => {
-        await f.writeBytes(offset, data)
-        await f.sync()
-      })
+      await guarded(name, () =>
+        withFile(name, 'readwrite', async (f) => {
+          await f.writeBytes(offset, data)
+          await f.sync()
+        }),
+      )
       notify(name)
     },
   ),
   'storage.truncate': typed(async ({ name, size }: { name: string; size: number }) => {
-    await withFile(name, 'readwrite', async (f) => {
-      await f.truncate(size)
-      await f.sync()
-    })
+    await guarded(name, () =>
+      withFile(name, 'readwrite', async (f) => {
+        await f.truncate(size)
+        await f.sync()
+      }),
+    )
     notify(name)
   }),
   'storage.getSize': typed(async ({ name }: { name: string }) => {
-    return withFile(name, 'read', async (f) => f.size())
+    return guarded(name, () => withFile(name, 'read', async (f) => f.size()))
   }),
   'storage.remove': typed(async ({ name }: { name: string }) => {
     const s = await storage()
-    await s.remove(name)
+    await guarded(name, () => s.remove(name))
     notify(name)
   }),
   'storage.entries': async () => {
@@ -127,17 +148,17 @@ handleMessages({
   },
   'kv.set': typed(async ({ key, value }: { key: string; value: unknown }) => {
     const s = await storage()
-    await s.set(key, value)
+    await guarded(key, () => s.set(key, value))
     notify(key)
   }),
   'kv.get': typed(async ({ key }: { key: string }) => {
     const s = await storage()
-    return s.get(key)
+    return guarded(key, () => s.get(key))
   }),
   'db.run': typed(async ({ sql, paramsJson }: { sql: string; paramsJson: string }) => {
     const { wasm, imageFile } = await db()
     wasm.run(sql, paramsJson)
-    await persistDb(wasm, imageFile)
+    await guarded(imageFile, () => persistDb(wasm, imageFile))
     notify(imageFile)
   }),
   'db.query': typed(async ({ sql, paramsJson }: { sql: string; paramsJson: string }) => {
@@ -146,7 +167,7 @@ handleMessages({
   }),
   'db.checkpoint': async () => {
     const { wasm, imageFile } = await db()
-    await persistDb(wasm, imageFile)
+    await guarded(imageFile, () => persistDb(wasm, imageFile))
     return null
   },
 })

@@ -1,4 +1,4 @@
-import { PersistentSyncQueue, FetchSyncDelivery, SYNC_TAG } from './core/sync'
+import { PersistentSyncQueue, FetchSyncDelivery, SYNC_TAG, WebLock } from './core/sync'
 import type { SyncService } from './core/sync'
 import { WorkerKv } from './sw-kv'
 
@@ -13,6 +13,10 @@ export class SwSync {
     this.sync = new PersistentSyncQueue(
       new WorkerKv(),
       new FetchSyncDelivery({ serverUrl: config.serverUrl }),
+      // The SW takes the same `oxelot-sync` Web Lock the page-side queue uses,
+      // so a SW flush and a tab flush can never drain the shared queue at the
+      // same time (M2.3 slice 3.3: exactly one active flusher).
+      new WebLock((self as unknown as { navigator?: { locks?: LockManager } }).navigator?.locks),
     )
   }
 

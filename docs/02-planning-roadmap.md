@@ -72,8 +72,8 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 **Slice:** offline-enqueue 100k envelopes, restore network, assert ≥99% delivered exactly-once within the 24h soak window (G4).
 
 ### Milestone M2.3 — Web Locks integration
-**Deliverables:** Web Locks-based exclusive sync (`oxelot-sync` lock, `ifAvailable`), storage-write serialization across tabs, lock-release-driven cache invalidation.
-**Slice:** two-context contention test — exactly one flusher active.
+**Deliverables:** Web Locks-based exclusive sync (`oxelot-sync` lock, blocking), storage-write serialization across tabs (`oxelot-storage:<name>` write+read guard), lock-release-driven cache invalidation (≤100 ms).
+**Slice:** two-context contention test — exactly one flusher active (page + SW + two tabs).
 
 ### Milestone M2.4 — Periodic Background Sync
 **Deliverables:** `periodicsync` registration where supported; graceful no-op fallback; surfacing of capability to consumers.
@@ -84,7 +84,7 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 
 ### M2 Exit Criteria
 - [x] G4 soak test green (@perf e2e: 100k offline backlog drained exactly-once in 5.5 m, zero dead letters).
-- [ ] Cross-tab lock correctness under Playwright multi-context.
+- [x] Cross-tab lock correctness under Playwright multi-context (web-locks.spec.ts 3.1–3.3: storage write guard, release→invalidation ≤100 ms, exactly one active flusher).
 - [ ] Capability detection matches expected truth table on Chromium/Firefox/WebKit.
 - [ ] No regression on M1 criteria (full suite re-run).
 

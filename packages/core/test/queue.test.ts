@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { PersistentSyncQueue } from '../src/core/sync/queue'
+import { WebLock } from '../src/core/sync/web-lock'
 import type { OxelotMutation } from '../src/core/sync/envelope'
 
 class MemoryKv {
@@ -283,29 +284,48 @@ describe('PersistentSyncQueue 10k soak (1.4 shared-queue gate)', () => {
   })
 })
 
-class FakeLock {
-  isSupported = true
-  private acquired = false
-  async withLock<T>(name: string, fn: () => Promise<T>): Promise<T> {
-    return fn()
+/** Minimal exclusive per-origin lock set emulating a browser across realms. */
+class MockLocks {
+  private readonly held = new Set<string>()
+  private readonly waiters: Array<{ name: string; kick: () => void }> = []
+
+  request(name: string, ...rest: unknown[]): Promise<unknown> {
+    const options = (typeof rest[0] === 'object' && rest[0] ? rest[0] : {}) as { ifAvailable?: boolean }
+    const fn = (typeof rest[0] === 'function' ? rest[0] : rest[1]) as () => unknown
+    return new Promise<unknown>((resolve, reject) => {
+      const attempt = (): void => {
+        if (this.held.has(name)) {
+          if (options.ifAvailable === true) {
+            resolve(undefined)
+            return
+          }
+          this.waiters.push({ name, kick: attempt })
+          return
+        }
+        this.held.add(name)
+        void (async () => {
+          try {
+            resolve(await fn())
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error(String(err)))
+          } finally {
+            this.held.delete(name)
+            const idx = this.waiters.findIndex((w) => w.name === name)
+            const next = idx === -1 ? undefined : this.waiters.splice(idx, 1)[0]
+            next?.kick()
+          }
+        })()
+      }
+      attempt()
+    })
   }
-  async tryWithLock<T>(_name: string, fn: () => Promise<T>): Promise<{ acquired: boolean; result?: T }> {
-    if (this.acquired) return { acquired: false }
-    this.acquired = true
-    try {
-      return { acquired: true, result: await fn() }
-    } finally {
-      this.acquired = false
-    }
-  }
-  async release(): Promise<void> {}
 }
 
 describe('PersistentSyncQueue Web Lock', () => {
   it('flushes when the oxelot-sync lock is free', async () => {
     const kv = new MemoryKv()
     const deliver = vi.fn().mockResolvedValue(undefined)
-    const queue = new PersistentSyncQueue(kv, { deliver }, new FakeLock())
+    const queue = new PersistentSyncQueue(kv, { deliver }, new WebLock(new MockLocks() as unknown as LockManager))
     await queue.enqueue(makeMutation('a'))
 
     const result = await queue.flush()
@@ -314,29 +334,50 @@ describe('PersistentSyncQueue Web Lock', () => {
     expect(deliver).toHaveBeenCalledTimes(1)
   })
 
-  it('skips the drain when another holder owns the lock', async () => {
+  it('blocks the drain while another realm holds the lock, then drains once released', async () => {
     const kv = new MemoryKv()
     const deliver = vi.fn().mockResolvedValue(undefined)
-    const lock = new FakeLock()
-    const queue = new PersistentSyncQueue(kv, { deliver }, lock)
-
-    // Hold the lock externally, then flush: the queue must not deliver.
-    await lock.tryWithLock('oxelot-sync', async () => {
-      await queue.enqueue(makeMutation('a'))
-      const result = await queue.flush()
-      expect(result.delivered).toBe(0)
-      expect(deliver).not.toHaveBeenCalled()
-    })
-  })
-
-  it('does not deadlock the flushing guard across lock contention', async () => {
-    const kv = new MemoryKv()
-    const deliver = vi.fn().mockResolvedValue(undefined)
-    const lock = new FakeLock()
-    const queue = new PersistentSyncQueue(kv, { deliver }, lock)
+    const locks = new MockLocks()
+    // Two WebLock instances over one lock set model two realms (e.g. a tab and
+    // the service worker) contending on the same `oxelot-sync` lock.
+    const queue = new PersistentSyncQueue(kv, { deliver }, new WebLock(locks as unknown as LockManager))
     await queue.enqueue(makeMutation('a'))
 
-    // Concurrent flushes: the second must return immediately, not hang.
+    let release: () => void = () => undefined
+    const holderStarted = new Promise<void>((r) => {
+      void new WebLock(locks as unknown as LockManager).withLock('oxelot-sync', async () => {
+        r()
+        await new Promise<void>((rr) => (release = rr))
+      })
+    })
+    await holderStarted
+
+    // Realm A tries to flush under contention: it waits, it does not deliver.
+    const flushPromise = queue.flush()
+    let settled = false
+    const race = await Promise.race([
+      flushPromise.then((res) => {
+        settled = true
+        return res
+      }),
+      new Promise<'held'>((r) => setTimeout(() => r('held'), 30)),
+    ])
+    expect(race).toBe('held')
+    expect(settled).toBe(false)
+
+    // Realm B releases the lock; the queued flush drains the envelope.
+    release()
+    const result = await flushPromise
+    expect(result.delivered).toBe(1)
+    expect(deliver).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not deadlock the flushing guard on concurrent flush() calls', async () => {
+    const kv = new MemoryKv()
+    const deliver = vi.fn().mockResolvedValue(undefined)
+    const queue = new PersistentSyncQueue(kv, { deliver }, new WebLock(new MockLocks() as unknown as LockManager))
+    await queue.enqueue(makeMutation('a'))
+
     const [a, b] = await Promise.all([queue.flush(), queue.flush()])
     expect(a.delivered + b.delivered).toBe(1)
     expect(deliver).toHaveBeenCalledTimes(1)

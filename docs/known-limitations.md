@@ -21,6 +21,8 @@ Recorded per Chapter 8 §8.4.4 (manual device matrix) and the release procedure
 | G2 full 500 MB soak is manual | The 500 MB write→reload→read byte-exact soak runs via `npm run test:g2-full` (or the manual matrix). GitHub Actions has CI time limits, so PRs run a 5 MB byte-exact smoke (`opfs` tag). | `packages/e2e/g2-full.spec.ts` |
 | WebKit OPFS coverage | The `opfs`-tagged tests run under the WebKit project but WebKit is only exercised where Playwright browsers are installed (manual/local); CI runs Chromium. | `playwright.config.ts` |
 | `BroadcastChannel`/`sessionStorage` availability | Cross-tab `storage-change` degrades to a no-op where these are unavailable (privacy modes); single-tab behaviour is unchanged. | ADR-06 |
+| Web Locks: `ifAvailable` co-ordination unreliable | Some Chromium builds grant `ifAvailable: true` requests even while another realm holds the lock, so flush arbitration uses **blocking** `oxelot-sync` acquisition (exactly one active flusher) and the `oxelot-storage:<name>` guard uses blocking locks. `ifAvailable`/skip semantics exist as diagnostics only. | M2.3 §5.2.5, slice 0.2 caveat |
+| Web Locks availability in realms | The storage guard and SW flush lock degrade to no-ops where `navigator.locks` is unavailable (Node, and engine/worker combinations lacking Web Locks); correctness then falls back to IDB transaction atomicity + consumer idempotency by `id`. | `core/storage/locks.ts`, `sw.ts` |
 
 ## Platform / browser matrix (manual, not automated)
 
