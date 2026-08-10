@@ -104,6 +104,32 @@ async function seedQueue(page: Page): Promise<void> {
   }, { queueKey: QUEUE_KEY, now: Date.now() })
 }
 
+/** Seed the shared IndexedDB queue with `n` pending envelopes (no page sync). */
+async function seedQueueN(page: Page, n: number): Promise<void> {
+  await page.evaluate(async ({ queueKey, count }) => {
+    const db = await new Promise<IDBDatabase>((resolvePromise, rejectPromise) => {
+      const req = indexedDB.open('oxelot', 1)
+      req.onsuccess = () => resolvePromise(req.result)
+      req.onerror = () => rejectPromise(new Error('failed to open IndexedDB'))
+    })
+    const now = Date.now()
+    const envelopes = Array.from({ length: count }, (_, i) => ({
+      id: `soak-${i}`,
+      schemaVersion: 1,
+      collection: 'todos',
+      op: 'upsert',
+      payload: { i },
+      createdAt: now + i,
+      attempts: 0,
+    }))
+    const tx = db.transaction('kv', 'readwrite')
+    tx.objectStore('kv').put({ key: queueKey, value: envelopes })
+    await new Promise<void>((resolvePromise) => {
+      tx.oncomplete = () => resolvePromise()
+    })
+  }, { queueKey: QUEUE_KEY, count: n })
+}
+
 test('1.1 SW activates and registration is idempotent', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => typeof (window as TestWindow).__oxelot?.Oxelot === 'function')
@@ -230,3 +256,50 @@ test('1.3 SW flushes envelopes seeded while offline after connectivity restore',
   expect(ids).toContain('sync-1')
   expect(ids).toContain('sync-2')
 })
+
+test('1.4 shared-queue 10k soak: SW drains a 10k-envelope backlog @perf', async ({ page, context }) => {
+  test.setTimeout(600_000)
+await context.grantPermissions(['background-sync'])
+    await page.goto('/')
+    await page.waitForFunction(() => typeof (window as TestWindow).__oxelot?.Oxelot === 'function')
+    await resetSyncLog(page)
+
+    await page.evaluate(async () => {
+      const w = window as TestWindow
+      const oxelot = await w.__oxelot!.Oxelot.init({ workers: 1, registerSW: true })
+      ;(window as { __r4?: unknown }).__r4 = oxelot
+    })
+    await waitForSwActive(page)
+    await waitForController(page)
+
+    // Wire the SW queue, then seed a 10k-envelope backlog directly into the
+    // shared IndexedDB kv (the same `oxelot`/`kv` store both page-side and
+    // SW-side read).
+    await page.evaluate(
+      async ({ serverUrl: srv }) => {
+        const reg = await navigator.serviceWorker.ready
+        reg.active?.postMessage({ type: 'oxelot-config', serverUrl: srv })
+      },
+      { serverUrl: SYNC_ENDPOINT },
+    )
+    await seedQueueN(page, 10_000)
+    await page.waitForTimeout(300)
+
+    const result = await triggerSwFlush(page)
+    expect(result).toMatchObject({ type: 'oxelot-sync-result' })
+    expect((result as { delivered?: number }).delivered ?? -1).toBe(10_000)
+    expect((result as { deadLetters?: number }).deadLetters ?? -1).toBe(0)
+
+    // Every envelope reaches the server exactly once.
+    await expect.poll(async () => (await readSyncLog(page)).length, { timeout: 300_000 }).toBe(10_000)
+    const soaks = await readSyncLog(page)
+    const ids = soaks.map((b) => (JSON.parse(b) as { id?: string }).id)
+    expect(new Set(ids).size).toBe(10_000)
+
+    // Queue is drained; nothing remains pending.
+    const status = await page.evaluate(async () => {
+      const ox = (window as { __r4?: { sync: { status(): Promise<{ pending: number; deadLetters: number }> } } }).__r4
+      return ox ? ox.sync.status() : { pending: -1, deadLetters: -1 }
+    })
+    expect(status).toEqual({ pending: 0, deadLetters: 0 })
+  })

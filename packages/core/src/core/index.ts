@@ -271,6 +271,9 @@ export class Oxelot {
 
 class NoopSync implements SyncService {
   async enqueue(): Promise<void> {}
+  async peek(): Promise<null> {
+    return null
+  }
   async flush(): Promise<{ delivered: number; deadLetters: number }> {
     return { delivered: 0, deadLetters: 0 }
   }

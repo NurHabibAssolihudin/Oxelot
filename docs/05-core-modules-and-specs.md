@@ -168,6 +168,8 @@ export type SyncState =
 export interface SyncService {
   /** Persist an envelope BEFORE returning. Throws on write failure. */
   enqueue(m: OxelotMutation): Promise<void>
+  /** Peek the front of the queue without removing it (inspection). */
+  peek(): Promise<OxelotMutation | undefined>
   /** Drain the queue: deliverable attempts, backoff for transient failures. */
   flush(): Promise<{ delivered: number; deadLetters: number }>
   /** Count pending + dead-letter. */
@@ -175,6 +177,12 @@ export interface SyncService {
   onStateChange(cb: (s: SyncState) => void): () => void
 }
 ```
+
+**Delivery semantics (normative):**
+- **Exactly-once by stable `id`:** `enqueue` drops an envelope whose `id` is already pending. Re-enqueueing the same `id` after success reappends it (a re-created mutation is a new contract).
+- **Atomic pop-on-success:** an envelope is removed from the queue only *after* the server acknowledges delivery (`2xx`). It is never removed before a successful delivery attempt.
+- **Checkpointed drains:** long flushes persist the kept prefix + not-yet-attempted tail every `checkpoint` successes, so a crash loses at most `checkpoint` already-delivered envelopes.
+- **Persistence:** the queue is stored in the shared Cache-API `oxelot/kv` store (page and service worker read the same store), not in memory.
 
 ### 5.2.4 State machine (normative)
 
@@ -192,10 +200,11 @@ export interface SyncService {
     ▼
 ```
 
-- Delivery: `POST ${sync.serverUrl}` with JSON `{ schemaVersion, id, collection, op, payload }`; consumer acknowledges with HTTP `2xx`.
+- Delivery: `POST ${sync.serverUrl}` with JSON `{ schemaVersion, id, collection, op, payload }`; consumer acknowledges with HTTP `2xx`. Deliveries are idempotent by `id` on the consumer side; the client enqueue dedupes by `id` (§5.2.3).
 - Transient = network error or HTTP `5xx`/`429` (with `Retry-After` respected when present).
 - Permanent = HTTP `4xx` (except `408`/`429`) or schema error → dead letter.
 - Backoff schedule: attempt `1→30s`, `2→1m`, `3→5m`, `4→30m`, `5+→1h` (cap). `attempts` persists across page loads (stored with the envelope).
+- Pop-on-success: an envelope is deleted from the queue only after a `2xx`; a crash mid-drain replays at most the already-delivered tail since the last checkpoint (see §5.2.3).
 
 ### 5.2.5 Web Locks integration (normative)
 
@@ -210,6 +219,7 @@ export interface SyncService {
 - Listens for `sync` events; calls `sync.flush()`.
 - Listens for `message` (`type: 'oxelot-sync'`) to trigger an explicit flush from a tab.
 - Never touches DOM (SW has none). Uses the same `SyncService` module (bundled into the SW build via the pool's SW variant).
+- Reads and writes the **same queue** as pages: the shared Cache-API `oxelot/kv` store is opened via `importCache` by both page and SW (imported by `core/index.ts`). Static assets live in a separate `oxelot/cache-assets` cache so asset versioning never collides with queue data.
 
 ---
 

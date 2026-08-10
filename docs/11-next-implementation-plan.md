@@ -34,15 +34,15 @@ but must be green before the v0.2.0 release gate.
 | D6 | §5.6 error table | `ERR_DB_SQL`, `ERR_DB_DISABLED` implemented but absent from the spec table | Low — docs drift |
 | D7 | §5.3.3 `acquire()` maps to native permission prompt | `acquire()` only asserts availability; never `ERR_HW_DENIED` | Medium — Phase 2.5 item |
 | D8 | §5.7 write → optimistic + envelope enqueue (§6.3.1) | `useOxelotStorage.write` only does `storage.set`; no envelope | Medium — Phase 2 item |
-| D9 | M2.1 SW registered by `Oxelot.init` when `registerSW: true` | ✅ resolved by slice 1.1 (v0.1.1); `sw.ts` relay + `sync` listener added by 1.2/1.3; remaining: shared queue (slice 1.4) | High — was Phase 2 gate |
+| D9 | M2.1 SW registered by `Oxelot.init` when `registerSW: true` | ✅ resolved by slice 1.1 (v0.1.1); `sw.ts` relay + `sync` listener added by 1.2/1.3; shared queue via 1.4 — all in v0.1.1 | High — was Phase 2 gate |
 | D10 | §6.2.4 bridge `pending` load metric | `OxelotBridge` exposes `pendingCount` (see §9.3.1); pool `load()` uses `inFlight` | Info — metric source differs from spec but `load()` is the public one |
 
 ### 11.1.3 Phase 2 milestones status
 
 | Milestone | Status | Missing |
 |-----------|--------|---------|
-| M2.1 SW relay | Partial | slices 1.1–1.3 ✅ (v0.1.1); remaining: envelope queue shared with SW (slice 1.4) |
-| M2.2 Background Sync queue | Partial | `peek`, scheduled backoff, exactly-once soak (G4) |
+| M2.1 SW relay | ✅ | slices 1.1–1.4 (v0.1.1): relay, `sync` listener, shared queue |
+| M2.2 Background Sync queue | Partial | `peek` ✅, atomic pop ✅, scheduled backoff ✅, exactly-once dedupe ✅ (slices 1.4/2.1/2.2, v0.1.1); remaining: G4 soak (slice 2.3) |
 | M2.3 Web Locks | Stub only | integration into flush + storage writes, lock-release invalidation, 2-context e2e |
 | M2.4 Periodic Background Sync | None | `periodicsync` registration + no-op fallback + capability surfacing |
 | M2.5 Hardware bridge | Partial | native `acquire()` mapping, permission flow, 3-browser truth table |
@@ -69,7 +69,7 @@ but must be green before the v0.2.0 release gate.
 | 1.1 | `Oxelot.init` registers the bundled SW when `registerSW: true` | `core/index.ts`, `sw.ts` | e2e: SW active; idempotent re-register | ✅ `sync-relay.spec.ts` 1.1 |
 | 1.2 | Tab↔SW message relay (`type: 'oxelot-sync'` → flush → result to tab) | `sw.ts` | e2e: tab-triggered flush | ✅ `sync-relay.spec.ts` 1.2 |
 | 1.3 | SW `sync` event listener → `flush()` | `sw.ts` | e2e: emulated offline→online | ✅ `sync-relay.spec.ts` 1.3 (see caveat below) |
-| 1.4 | Envelope queue shared with SW (Cache-API KV already exists) | `sw-kv.ts` | soak 10k | ⏳ not started |
+| 1.4 | Envelope queue shared with SW (Cache-API KV already exists) | `sw-kv.ts` | soak 10k | ✅ shared `oxelot`/`kv` store (D9→resolved); soak `sync-relay.spec.ts` 1.4 `@perf` + unit 10k |
 
 **Slice 1.3 caveat:** headless Chromium disables Background Sync even with `grantPermissions(['background-sync'])` and `--enable-features=BackgroundSync` (`registration.sync.register()` throws "Background Sync is disabled"). CI covers the identical flush path by driving `getSync().flush()` via the `oxelot-sync` relay message after an offline→online transition. Real `sync`-event firing is on the manual matrix (Ch. 8 §8.4).
 
@@ -77,9 +77,9 @@ but must be green before the v0.2.0 release gate.
 
 | Slice | Task | Files | Gate |
 |-------|------|-------|------|
-| 2.1 | `peek()` + atomic pop-on-success (no double-deliver) | `core/sync/queue.ts` | unit |
-| 2.2 | Exactly-once by stable `id` (idempotent replay) | `core/sync/*` | unit |
-| 2.3 | G4 soak: 100k envelopes offline → restore → ≥99% delivered ≤24 h | `packages/e2e/soak.spec.ts` | e2e `@perf` + manual |
+| 2.1 | `peek()` + atomic pop-on-success (no double-deliver) | `core/sync/queue.ts` | unit | ✅ `peek()`, pop-on-success, checkpoint persistence `queue.test.ts` |
+| 2.2 | Exactly-once by stable `id` (idempotent replay) | `core/sync/*` | unit | ✅ enqueue dedupe by `id` `queue.test.ts` |
+| 2.3 | G4 soak: 100k envelopes offline → restore → ≥99% delivered ≤24 h | `packages/e2e/soak.spec.ts` | e2e `@perf` + manual | ⏳ not started |
 
 ### Phase 3 — M2.3 Web Locks end-to-end
 
