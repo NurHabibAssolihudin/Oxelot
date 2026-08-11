@@ -10,3 +10,5 @@ export {
   registerPeriodicSync,
 } from './capabilities'
 export type { SyncCapabilities, PeriodicSyncOptions, PeriodicSyncResult } from './capabilities'
+export { makeStorageMutation, newMutationId, storageCollection } from './optimistic'
+export type { MutationClock } from './optimistic'

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Oxelot } from '@oxelot/core'
+import { makeStorageMutation } from '@oxelot/core'
 import type { OxelotConfig, DatabaseFacade, SyncState } from '@oxelot/core'
 
 export function useOxelot(config?: OxelotConfig): Oxelot | null {
@@ -78,15 +79,27 @@ export function useOxelotStorage<T>(
   const write = useCallback(
     async (value: T) => {
       if (!instance) return
+      const snapshot = data
+      // §6.3.2 optimistic apply: surface the value immediately, then make both
+      // copies durable — the local storage value AND the sync envelope
+      // (write-ahead). A failure rolls back to `snapshot` via a second
+      // storage-change so sibling tabs see the reverted document too.
       setData(value)
       try {
         await instance.storage.set(key, value)
+        await Oxelot.enqueue(instance, makeStorageMutation(key, value))
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)))
+        try {
+          await instance.storage.set(key, snapshot)
+        } catch {
+          // Best-effort rollback persist; local state is reverted regardless.
+        }
+        setData(snapshot)
         throw err
       }
     },
-    [instance, key],
+    [instance, key, data],
   )
 
   const remove = useCallback(async () => {

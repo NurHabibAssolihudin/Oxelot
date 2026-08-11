@@ -109,9 +109,9 @@ Queue waits; SW 'sync' event on connectivity restore triggers flush()
 - Crash after `enqueue()`: envelope survives; SW replays on reconnect. No data-loss window between persistence and replay.
 
 ### 6.3.5 Cross-tab consistency with Web Locks
-- Storage writes acquire `oxelot-storage:<file>` (or `oxelot-storage:<key>` for `StorageFacade.set`) with `ifAvailable: true`; on lock-unavailable the write is queued behind the lock holder (non-blocking main thread).
+- Storage writes acquire `oxelot-storage:<file>` (or `oxelot-storage:<key>` for `StorageFacade.set`) with a **blocking** Web Lock (M2.3 §5.2.5); a concurrent writer queues behind the holder and reads never observe a partially-written value. (`ifAvailable` arbitration is not used — some Chromium builds grant `ifAvailable` requests even while another realm holds the lock.)
 - Sync flush acquires `oxelot-sync`; only one tab/SW flushes at a time (exactly-once intent, §5.2.5).
-- On lock release, listeners in other tabs receive `storage-change` and invalidate caches; Playwright two-context test asserts propagation ≤ 100ms (M1.5).
+- On lock release, listeners in other tabs receive `storage-change` and invalidate caches; Playwright two-context test asserts propagation ≤ 100ms (M1.5 / web-locks.spec.ts 3.2).
 
 ### 6.3.6 UI-thread guarantee
 - All of §6.3 executes in workers; the main thread's work per mutation is: optimistic state update (µs), `postMessage` (µs), and promise resolution — well under the 16ms budget (G1).

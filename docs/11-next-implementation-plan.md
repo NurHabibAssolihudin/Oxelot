@@ -1,6 +1,6 @@
 # 11. Next Implementation Plan — Phase 0 Hardening + Phase 2 (v0.2.0)
 
-**Chapter status:** Draft (v0.1.1 → v0.2.0) · **File:** `docs/11-next-implementation-plan.md`
+**Chapter status:** Final (v0.2.0) · **File:** `docs/11-next-implementation-plan.md`
 
 This chapter is the **execution plan for the next implementation round**. It records the
 gap analysis against the current codebase (as of v0.1.0), then defines ordered slices
@@ -33,7 +33,7 @@ but must be green before the v0.2.0 release gate.
 | D5 | §6.3.1 auto-flush on connectivity restore | No `online` listener, no SW `sync` listener, no post-enqueue flush | Medium — delivery requires manual `flush()` |
 | D6 | §5.6 error table | `ERR_DB_SQL`, `ERR_DB_DISABLED` implemented but absent from the spec table | Low — docs drift |
 | D7 | §5.3.3 `acquire()` maps to native permission prompt | `acquire()` only asserts availability; never `ERR_HW_DENIED` | Medium — Phase 2.5 item |
-| D8 | §5.7 write → optimistic + envelope enqueue (§6.3.1) | `useOxelotStorage.write` only does `storage.set`; no envelope | Medium — Phase 2 item |
+| D8 | §5.7 write → optimistic + envelope enqueue (§6.3.1) | ✅ resolved (v0.1.1 phase 4 slice 5.3): `useOxelotStorage.write` persists the value and enqueues a `storage:${key}` upsert envelope via `makeStorageMutation`, rolls back on failure (second `storage-change`); helper unit-tested `optimistic.test.ts` | Was Phase 2 item |
 | D9 | M2.1 SW registered by `Oxelot.init` when `registerSW: true` | ✅ resolved by slice 1.1 (v0.1.1); `sw.ts` relay + `sync` listener added by 1.2/1.3; shared queue via 1.4 — all in v0.1.1 | High — was Phase 2 gate |
 | D10 | §6.2.4 bridge `pending` load metric | `OxelotBridge` exposes `pendingCount` (see §9.3.1); pool `load()` uses `inFlight` | Info — metric source differs from spec but `load()` is the public one |
 
@@ -106,6 +106,7 @@ but must be green before the v0.2.0 release gate.
 | 4.2 | ✅ `Oxelot.syncCapabilities()` / `detectSyncCapabilities` truth table | `capabilities.test.ts` (4) + `periodic-sync.spec.ts` 4.1 (live parity) |
 | 5.1 | ✅ `hardware/native.ts` `acquireNative` (WebUSB/Bluetooth `requestDevice`, `NDEFReader.scan`, Wake Lock, FSA picker, Vibration) + `toHardwareError` mapping (`ERR_HW_GESTURE_REQUIRED`/`ERR_HW_DENIED`) | `hardware.test.ts` (unit truth table, 7 scenarios + mapping) |
 | 5.2 | ✅ `hardware.spec.ts` truth table + `ERR_HW_UNSUPPORTED` on all three engines | e2e chromium+webkit (default) + firefox via `PW_MATRIX=1` (6 passed) |
+| 5.3 | ✅ Optimistic write → envelope (D8, §6.3.2): `makeStorageMutation` (`storage:${key}` upsert), `useOxelotStorage.write` enqueues + rollback via second `storage-change` | `optimistic.test.ts` (4) + playground smoke + full e2e green |
 
 **Slice 5.2 matrix note:** Firefox is not part of the default suite (not installed locally). Run the 3-browser truth table with `PW_MATRIX=1 npx playwright install firefox && PW_MATRIX=1 npx playwright test packages/e2e/hardware.spec.ts`. Observed desktop truth tables are recorded in `hardware.spec.ts` (`EXPECTED`).
 

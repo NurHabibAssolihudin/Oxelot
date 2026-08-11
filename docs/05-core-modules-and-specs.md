@@ -439,10 +439,14 @@ export function useOxelotStorage<T>(key: string): {
   data: T | null
   loading: boolean
   error: OxelotError | null
-  write: (value: T) => Promise<void>   // optimistic; sets data immediately
+  write: (value: T) => Promise<void>   // optimistic; sets data immediately (§6.3.2)
   remove: () => Promise<void>
 }
 //   - subscribes to 'storage-change'; reloads on cross-tab events.
+//   - `write` persists the value (§6.3.1) AND enqueues a `storage:${key}` upsert
+//     envelope (`makeStorageMutation`) for background sync; on any failure it
+//     emits `error`, persists the previous value (second `storage-change`), and
+//     rolls the optimistic state back.
 
 export function useOxelotDB<T>(query: (db: DatabaseFacade) => Promise<T>, deps?: unknown[]): {
   result: T | null

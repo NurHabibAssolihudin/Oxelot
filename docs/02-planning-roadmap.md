@@ -87,7 +87,7 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 - [x] G4 soak test green (@perf e2e: 100k offline backlog drained exactly-once in 5.5 m, zero dead letters).
 - [x] Cross-tab lock correctness under Playwright multi-context (web-locks.spec.ts 3.1–3.3: storage write guard, release→invalidation ≤100 ms, exactly one active flusher).
 - [x] Capability detection matches expected truth table on Chromium/Firefox/WebKit (`hardware.spec.ts` 5.2: 6/6 across all three engines via `PW_MATRIX=1`; `syncCapabilities()` parity on Chromium e2e — periodic-sync.spec.ts 4.1).
-- [ ] No regression on M1 criteria (full suite re-run).
+- [x] No regression on M1 criteria (full suite re-run: unit 87, e2e default 21, @perf G1/G4/1.4, lint/typecheck/depcruise/size — all green at v0.2.0 gate).
 
 ---
 

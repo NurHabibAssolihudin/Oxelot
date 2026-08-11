@@ -59,8 +59,20 @@ Full workflow in [Chapter 10](docs/10-user-guide.md).
 ## Repository Status
 
 - [x] Phase 1 — Foundation & Storage (MVP) `v0.1.0` — **implemented** (unit tests green, G7 bundle gate passing)
-- [ ] Phase 2 — Hardware & Background Layer `v0.2.0`
+- [x] Phase 2 — Hardware & Background Layer `v0.2.0` — **implemented** (M2.1 SW relay, M2.2 durable queue + G4 soak, M2.3 Web Locks, M2.4 periodic sync, M2.5 hardware bridge)
 - [ ] Phase 3 — Daemon / Advanced Bridge `v0.3.0`
+
+### Phase 2 implementation notes (v0.2.0)
+
+**Implemented:** M2.1 service worker relay (`sw.ts` registered by `Oxelot.init` when `registerSW: true`, `oxelot-sync` message relay, `sync` + `periodicsync` event handlers, shared IndexedDB `oxelot`/`kv` queue), M2.2 durable background-sync queue (envelope write-ahead, atomic pop-on-success, checkpointed drains, exponential backoff 30s→1h cap, dead letters, exactly-once by `id`, G4 100k-soak green in 5.5 m), M2.3 Web Locks (`oxelot-sync` blocking flush serialization — exactly one active flusher across page/tab/SW; `oxelot-storage:<name>` write+read guard; release→sibling `storage-change` invalidation ≤100 ms), M2.4 periodic background sync (`features.periodicSync` with default 12 h min interval, no-op fallback, `syncCapabilities()`), M2.5 Fugu hardware bridge (`capabilities()` truth table on Chromium/WebKit/Firefox, native `acquire()` prompt mapping with `ERR_HW_GESTURE_REQUIRED`/`ERR_HW_DENIED`, wakeLock release handle), D8 optimistic write→envelope (`useOxelotStorage.write` enqueues `storage:<key>` upsert and rolls back via second `storage-change`). 87 unit tests, 21 default e2e green (plus 6-test 3-browser matrix via `PW_MATRIX=1`).
+
+**Pending / manual (documented, not CI-blocking):**
+
+| Item | Status | Spec reference |
+|------|--------|----------------|
+| Real `sync`/`periodicsync` event firing | headless Chromium disables Background Sync scheduling; CI drives the identical flush path via the `oxelot-sync` relay | Chapter 5 §5.2.7, docs/11 |
+| Native hardware permission prompts (USB/NFC/Bluetooth/FSA) | CI covers error-code mapping + truth table; real prompt flows are the manual device matrix | Chapter 5 §5.3.3, Chapter 8 §8.4 |
+| Full 3-browser truth table | `PW_MATRIX=1 npx playwright install firefox` then `PW_MATRIX=1 npx playwright test packages/e2e/hardware.spec.ts` (verified locally 6/6) | docs/11 Phase 4 |
 
 ### Phase 1 implementation notes (v0.1.0)
 
