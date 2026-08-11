@@ -13,11 +13,15 @@ interface OxelotInstance {
 
 type TestWin = TestWindow & { __h?: OxelotInstance }
 
+// §5.3.1 truth tables are recorded per engine. `bluetooth` is the one
+// OS-dependent entry: Chromium exposes `navigator.bluetooth` only when the host
+// has a Bluetooth stack (Windows/macOS/Android) — not on headless Linux
+// runners (no BlueZ service), see docs/known-limitations.md.
 const EXPECTED: Record<string, Caps> = {
   chromium: {
     nfc: false,
     usb: true,
-    bluetooth: true,
+    bluetooth: process.platform !== 'linux',
     wakeLock: true,
     fileSystemAccess: true,
     vibration: true,
