@@ -15,6 +15,7 @@ import type { OxelotEvent, DatabaseFacade } from './types'
 import type { StorageBackend, OxelotFile } from './storage'
 import { StorageBroadcast, getSourceTab } from './broadcast'
 import type { StorageChangeMessage } from './broadcast'
+import { DaemonBridge } from './daemon'
 
 export interface SyncConfig {
   serverUrl: string
@@ -36,6 +37,8 @@ export interface OxelotConfig {
     /** `true` registers the `oxelot-sync` periodic tag at the default 12 h min interval; a number sets the min interval in ms (Chrome clamps to its own minimum). Unsupported engines degrade to a no-op. */
     periodicSync?: boolean | number
   }
+  /** M3.2 daemon bridge (§5.4): `url` is the local daemon endpoint, e.g. `ws://127.0.0.1:9090`. Enabled unless `features.daemon === false`. */
+  daemon?: { url: string }
 }
 
 export interface StorageFacade {
@@ -127,6 +130,8 @@ export class Oxelot {
   private readonly swUrl: string
   private readonly serverUrl: string | undefined
   private readonly periodicSync: boolean | number | undefined
+  private readonly daemonUrl: string | undefined
+  private daemonBridge: DaemonBridge | null = null
   private syncCaps: SyncCapabilities | null = null
   private swRegistered = false
   private readyEmitted = false
@@ -148,6 +153,9 @@ export class Oxelot {
     this.swUrl = config.swUrl ?? './sw.js'
     this.serverUrl = config.sync?.serverUrl
     this.periodicSync = config.features?.periodicSync
+    // §5.4.4 additive gate: daemon is off by default; `features.daemon === false`
+    // disables it even if a `daemon.url` is configured.
+    this.daemonUrl = config.features?.daemon === false ? undefined : config.daemon?.url
     sync.onStateChange((state) => {
       if (!this.disposed) this.emit({ type: 'sync-state', state })
     })
@@ -279,6 +287,27 @@ export class Oxelot {
     return this.syncCaps
   }
 
+  /**
+   * M3.2 daemon bridge (§5.4), created lazily on first access when a
+   * `daemon.url` is configured. The connection starts automatically and retries
+   * in the background (§5.4.4); capability calls reject `ERR_DAEMON_CONNECT`
+   * until `ready`. Returns `null` when no daemon URL was configured.
+   */
+  get daemon(): DaemonBridge | null {
+    if (this.daemonBridge) return this.daemonBridge
+    if (this.daemonUrl === undefined) return null
+    const bridge = new DaemonBridge({ url: this.daemonUrl })
+    this.daemonBridge = bridge
+    // M3.3: surface the daemon bridge as the `daemon` hardware capability while ready (§5.5.2).
+    bridge.onStateChange((state) => {
+      if (!this.disposed) this.hardware.setDaemonReady(state === 'ready')
+    })
+    void bridge.connect().catch(() => {
+      // background reconnect keeps trying; failures surface per-request
+    })
+    return bridge
+  }
+
   on(cb: (ev: OxelotEvent) => void): () => void {
     this.listeners.add(cb)
     if (this.readyEmitted) queueMicrotask(() => cb({ type: 'ready' }))
@@ -294,6 +323,8 @@ export class Oxelot {
       globalThis.removeEventListener('online', this.onlineHandler)
     }
     await this.pool.dispose()
+    this.hardware.setDaemonReady(false)
+    if (this.daemonBridge) await this.daemonBridge.dispose()
   }
 
   static enqueue(ox: Oxelot, m: OxelotMutation): Promise<void> {

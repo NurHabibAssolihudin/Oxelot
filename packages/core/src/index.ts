@@ -7,3 +7,37 @@ export type { SyncService, OxelotMutation, SyncState } from './core/sync'
 export { makeStorageMutation, newMutationId, storageCollection } from './core/sync'
 export { OxelotError } from './errors'
 export type { OxelotErrorCode } from './errors'
+export { DaemonBridge, DaemonConnection, nextBackoffDelay, parseDaemonMessage, toDaemonErrorCode, DAEMON_PROTOCOL_VERSION } from './core/daemon'
+export { GrantGate, DAEMON_REGISTRY, describeCapability, encodeBytes, decodeBytes } from './core/daemon'
+export type {
+  DaemonBridgeOptions,
+  DaemonState,
+  DaemonSocket,
+  DaemonTransportFactory,
+  DaemonTransportHandlers,
+  DaemonBackoff,
+  DaemonConnectionOptions,
+  CapabilityAdvertisement,
+  DaemonHello,
+  DaemonAdvertise,
+  DaemonRequest,
+  DaemonResponse,
+  DaemonResponseOk,
+  DaemonResponseError,
+  DaemonEvent,
+  DaemonPing,
+  DaemonPong,
+  DaemonMessage,
+  GestureSource,
+  GrantGateOptions,
+  CapabilityDescriptor,
+  SerialPortInfo,
+  SerialOpenResult,
+  SerialReadResult,
+  SocketConnectResult,
+  SystemStats,
+  DaemonSerialApi,
+  DaemonSocketApi,
+  DaemonFileApi,
+  DaemonSysApi,
+} from './core/daemon'

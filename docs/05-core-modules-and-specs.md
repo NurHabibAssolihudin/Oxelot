@@ -362,6 +362,8 @@ Each capability is `domain:action` with a declared request/response shape in the
 | `socket:connect` | true | `{ host, port }` | `{ handle }` | `ERR_PERMISSION_DENIED`, `ERR_SYNC_NETWORK` |
 | `socket:relay` | true | `{ handle, bytes }` (base64) | — (use `event` push) | `ERR_PERMISSION_DENIED` |
 | `file:watch` | true | `{ path }` | — (use `event` push) | `ERR_PERMISSION_DENIED`, `ERR_FILE_NOT_FOUND` |
+| `file:get` | false | `{ key }` | `<value>` or `null` | `ERR_DAEMON_UNSUPPORTED` |
+| `file:set` | false | `{ key, value }` | `{}` | `ERR_DAEMON_UNSUPPORTED` |
 | `sys:stats` | false | — | `{ cpu, mem, uptimeMs }` | `ERR_DAEMON_UNSUPPORTED` |
 
 - Errors are the §5.6 codes (see below); capability-specific variants reuse core codes (`ERR_FILE_NOT_FOUND`, `ERR_SYNC_NETWORK`) or add no new ones.

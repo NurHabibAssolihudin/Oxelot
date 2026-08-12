@@ -13,6 +13,12 @@ export type OxelotErrorCode =
   | 'ERR_DB_DISABLED'
   | 'ERR_DB_SQL'
   | 'ERR_PERMISSION_DENIED'
+  | 'ERR_DAEMON_CONNECT'
+  | 'ERR_DAEMON_TIMEOUT'
+  | 'ERR_DAEMON_SCHEMA'
+  | 'ERR_DAEMON_VERSION'
+  | 'ERR_DAEMON_UNSUPPORTED'
+  | 'ERR_DAEMON_NOT_FOUND'
   | 'ERR_UNKNOWN'
 
 export class OxelotError extends Error {

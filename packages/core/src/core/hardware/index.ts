@@ -26,6 +26,8 @@ export interface HardwareBridge {
   isAvailable(cap: HardwareCapability): boolean
   acquire(cap: HardwareCapability): Promise<void>
   release(cap: HardwareCapability): Promise<void>
+  /** Internal readiness reporter (M3.3): surfaces the daemon bridge as the `daemon` capability when `ready`. */
+  setDaemonReady(ready: boolean): void
 }
 
 const UNSET: HardwareCapabilities = {
@@ -97,6 +99,12 @@ export class PlatformHardwareBridge implements HardwareBridge {
 
   isAvailable(cap: HardwareCapability): boolean {
     return this.detected?.[cap] ?? false
+  }
+
+  /** Report the daemon bridge's readiness as the `daemon` capability (§5.4.4/§5.5.2). */
+  setDaemonReady(ready: boolean): void {
+    if (!this.detected) this.detected = { ...UNSET }
+    this.detected.daemon = ready
   }
 
   async acquire(cap: HardwareCapability): Promise<void> {

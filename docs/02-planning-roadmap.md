@@ -101,9 +101,11 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 
 ### Milestone M3.2 — Transport layer
 **Deliverables:** WebSocket primary transport, WebRTC DataChannel fallback (port conflict/drop), connection state machine (`disconnected → connecting → handshake → ready`), auto-retry with backoff.
+**Slice:** M3.2 ✅ 2026-08-12 — `core/daemon/` (types, schema parser, ws+rtc transports, state machine, bridge) + 18 unit tests + Playwright e2e against a tiny ws echo server (handshake, capability RPC, `file:` storage handoff, additive no-op, gating).
 
 ### Milestone M3.3 — Daemon capability registry
 **Deliverables:** registry + examples: USB-serial passthrough, raw TCP/UNIX socket relay, file watcher, system stats. Each capability: request/response schema, permission flag, error codes.
+**Slice:** M3.3 ✅ 2026-08-12 — §5.4.6 registry (`core/daemon/registry.ts`), gesture-gated session grant (`core/daemon/grant.ts`), `DaemonBridge.grant` + typed `serial`/`socket`/`file`/`sys` surface, `ERR_PERMISSION_DENIED` client gate, `hardware.capabilities().daemon` surfacing; unit + e2e (real-click user gesture) green.
 
 ### Milestone M3.4 — Security boundary
 **Deliverables:** localhost-origin verification, per-capability permission handshake (consumer must opt-in per capability), message schema validation on both ends, secret-free wire protocol, fuzz harness for malformed frames.
