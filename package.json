@@ -21,6 +21,7 @@
     "test:e2e": "playwright test --grep-invert \"@g2-full|@perf\"",
     "test:perf": "playwright test --grep @perf",
     "test:g2-full": "playwright test --grep @g2-full",
+    "fuzz:daemon": "node scripts/fuzz-daemon.mjs",
     "size": "node scripts/size-check.mjs"
   },
   "devDependencies": {

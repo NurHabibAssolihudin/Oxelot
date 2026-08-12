@@ -135,6 +135,29 @@ describe('parseDaemonMessage', () => {
     )
     expect(() => parseDaemonMessage(JSON.stringify({ type: 'response', protocolVersion: 1, id: 'r', cap: 'c', ok: 'yes' }))).toThrowError(OxelotError)
   })
+
+  it('schema-lock: rejects oversized frames, unbounded identifiers, and garbage cap names (M3.4)', () => {
+    const big = JSON.stringify({ type: 'pong', pad: 'x'.repeat(70 * 1024) })
+    expect(() => parseDaemonMessage(big)).toThrowError(/exceeds/)
+    const withSpace = JSON.stringify({ type: 'request', protocolVersion: 1, id: 'r1', cap: 'my cap' })
+    expect(() => parseDaemonMessage(withSpace)).toThrowError(/invalid characters/)
+    const ctrl = JSON.stringify({ type: 'event', protocolVersion: 1, cap: 'bad\u0000cap' })
+    expect(() => parseDaemonMessage(ctrl)).toThrowError(/invalid characters/)
+    const longCap = JSON.stringify({ type: 'advertise', protocolVersion: 1, caps: [{ cap: 'x'.repeat(65), permission: false }] })
+    expect(() => parseDaemonMessage(longCap)).toThrowError(/exceeds/)
+    const longId = JSON.stringify({ type: 'response', protocolVersion: 1, id: 'r'.repeat(65), cap: 'c', ok: true })
+    expect(() => parseDaemonMessage(longId)).toThrowError(/exceeds/)
+    const manyCaps = JSON.stringify({
+      type: 'advertise',
+      protocolVersion: 1,
+      caps: Array.from({ length: 1025 }, (_, i) => ({ cap: `c${i}`, permission: false })),
+    })
+    expect(() => parseDaemonMessage(manyCaps)).toThrowError(/more than/)
+    // well-formed identifiers with `.`, `:`, and `-` still parse.
+    expect(() =>
+      parseDaemonMessage(JSON.stringify({ type: 'advertise', protocolVersion: 1, caps: [{ cap: 'serial:read', permission: true }] })),
+    ).not.toThrow()
+  })
 })
 
 describe('nextBackoffDelay', () => {

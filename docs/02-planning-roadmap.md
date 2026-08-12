@@ -109,9 +109,10 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 
 ### Milestone M3.4 — Security boundary
 **Deliverables:** localhost-origin verification, per-capability permission handshake (consumer must opt-in per capability), message schema validation on both ends, secret-free wire protocol, fuzz harness for malformed frames.
+**Slice:** M3.4 ✅ 2026-08-12 — client-side localhost-only URL enforcement (§5.4.5.1, `connection.ts`), handshake schema lock in `core/daemon/schema.ts` (frame-size cap, bounded cap/id/clientId identifiers, caps-count bound), fuzz harness `packages/core/test/fuzz-daemon.test.ts` + `npm run fuzz:daemon` (≥ 1M malformed frames → only `OxelotError`; garbage never reaches `ready`); full suite + e2e unchanged green.
 
 ### M3 Exit Criteria
-- [ ] Fuzzing run (≥ 1M malformed frames) yields no memory issues and no unauthorized capability access.
+- [x] Fuzzing run (≥ 1M malformed frames) yields no memory issues and no unauthorized capability access.
 - [ ] Fallback: with daemon absent, all Phase 1+2 features pass unchanged.
 - [ ] Auth round-trip test: unauthorized frame rejected with `ERR_PERMISSION_DENIED`.
 - [ ] Optional-criteria demo: serial passthrough read/write in the playground.

@@ -3,6 +3,15 @@ import type { OxelotErrorCode } from '../../errors'
 
 export const DAEMON_PROTOCOL_VERSION = 1
 
+/** §5.4.3 schema-lock bounds: reject oversized frames and unbounded fields. */
+export const MAX_DAEMON_FRAME_BYTES = 64 * 1024
+const MAX_CAP_LENGTH = 64
+const MAX_ID_LENGTH = 64
+const MAX_CLIENT_ID_LENGTH = 256
+const MAX_CAPS_COUNT = 1024
+/** Printable ASCII only: rejects whitespace, control chars, and non-ASCII junk in identifiers. */
+const PRINTABLE = /^[\x21-\x7e]+$/
+
 export interface CapabilityAdvertisement {
   cap: string
   permission: boolean
@@ -80,6 +89,12 @@ function schemaError(message: string): OxelotError {
   return oxError('ERR_DAEMON_SCHEMA', message)
 }
 
+function assertIdentifier(value: string, what: string, maxLength: number): void {
+  if (value.length === 0) throw schemaError(`${what} must not be empty`)
+  if (value.length > maxLength) throw schemaError(`${what} exceeds ${maxLength} characters`)
+  if (!PRINTABLE.test(value)) throw schemaError(`${what} contains invalid characters`)
+}
+
 function asObject(value: unknown, what: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw schemaError(`${what} must be a JSON object`)
@@ -93,6 +108,9 @@ function asObject(value: unknown, what: string): Record<string, unknown> {
  * unsupported `protocolVersion`.
  */
 export function parseDaemonMessage(raw: string): DaemonMessage {
+  if (raw.length > MAX_DAEMON_FRAME_BYTES) {
+    throw schemaError(`frame exceeds ${MAX_DAEMON_FRAME_BYTES} bytes`)
+  }
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
@@ -111,16 +129,19 @@ export function parseDaemonMessage(raw: string): DaemonMessage {
   switch (type) {
     case 'hello': {
       if (obj.app !== 'oxelot' || typeof obj.clientId !== 'string') throw schemaError('malformed hello')
+      assertIdentifier(obj.clientId, 'clientId', MAX_CLIENT_ID_LENGTH)
       return { type: 'hello', app: 'oxelot', protocolVersion: DAEMON_PROTOCOL_VERSION, clientId: obj.clientId }
     }
     case 'advertise': {
       if (!Array.isArray(obj.caps)) throw schemaError('advertise is missing a `caps` array')
+      if (obj.caps.length > MAX_CAPS_COUNT) throw schemaError(`advertise declares more than ${MAX_CAPS_COUNT} capabilities`)
       const capsArr = obj.caps as unknown[]
       const caps: CapabilityAdvertisement[] = capsArr.map((item, index) => {
         const cc = asObject(item, `caps[${index}]`)
         if (typeof cc.cap !== 'string' || typeof cc.permission !== 'boolean') {
           throw schemaError(`caps[${index}] must have a string cap and a boolean permission`)
         }
+        assertIdentifier(cc.cap, `caps[${index}].cap`, MAX_CAP_LENGTH)
         const adv: CapabilityAdvertisement = { cap: cc.cap, permission: cc.permission }
         if (cc.schema !== undefined) {
           if (typeof cc.schema !== 'object' || cc.schema === null || Array.isArray(cc.schema)) {
@@ -134,12 +155,16 @@ export function parseDaemonMessage(raw: string): DaemonMessage {
     }
     case 'request': {
       if (typeof obj.id !== 'string' || typeof obj.cap !== 'string') throw schemaError('malformed request')
+      assertIdentifier(obj.id, 'request.id', MAX_ID_LENGTH)
+      assertIdentifier(obj.cap, 'request.cap', MAX_CAP_LENGTH)
       const msg: DaemonRequest = { type: 'request', protocolVersion: DAEMON_PROTOCOL_VERSION, id: obj.id, cap: obj.cap }
       if (obj.data !== undefined) msg.data = obj.data
       return msg
     }
     case 'response': {
       if (typeof obj.id !== 'string' || typeof obj.cap !== 'string') throw schemaError('malformed response')
+      assertIdentifier(obj.id, 'response.id', MAX_ID_LENGTH)
+      assertIdentifier(obj.cap, 'response.cap', MAX_CAP_LENGTH)
       if (typeof obj.ok !== 'boolean') throw schemaError('response is missing a boolean `ok`')
       if (obj.ok) {
         const msg: DaemonResponseOk = {
@@ -167,6 +192,7 @@ export function parseDaemonMessage(raw: string): DaemonMessage {
     }
     case 'event': {
       if (typeof obj.cap !== 'string') throw schemaError('malformed event')
+      assertIdentifier(obj.cap, 'event.cap', MAX_CAP_LENGTH)
       const msg: DaemonEvent = { type: 'event', protocolVersion: DAEMON_PROTOCOL_VERSION, cap: obj.cap }
       if (obj.data !== undefined) msg.data = obj.data
       return msg
