@@ -1,6 +1,6 @@
-# 11. Next Implementation Plan — Phase 0 Hardening + Phase 2 (v0.2.0)
+# 11. Next Implementation Plan — Phase 0 Hardening + Phase 2 (v0.2.0) + Phase 3 planning (v0.3.0)
 
-**Chapter status:** Final (v0.2.0) · **File:** `docs/11-next-implementation-plan.md`
+**Chapter status:** Final (v0.2.0); Phase 5 (M3 daemon) appended at kickoff 2026-08-13 · **File:** `docs/11-next-implementation-plan.md`
 
 This chapter is the **execution plan for the next implementation round**. It records the
 gap analysis against the current codebase (as of v0.1.0), then defines ordered slices
@@ -44,8 +44,8 @@ but must be green before the v0.2.0 release gate.
 | M2.1 SW relay | ✅ | slices 1.1–1.4 (v0.1.1): relay, `sync` listener, shared queue |
 | M2.2 Background Sync queue | ✅ | `peek`, atomic pop, scheduled backoff, exactly-once dedupe (1.4/2.1/2.2) + G4 soak 100k (2.3) — all v0.1.1 |
 | M2.3 Web Locks | ✅ | `oxelot-storage:<name>` write/read guard, blocking `oxelot-sync` flush serialization (page+SW), release→sibling invalidation ≤100ms (3.1–3.3, v0.1.1) |
-| M2.4 Periodic Background Sync | None | `periodicsync` registration + no-op fallback + capability surfacing |
-| M2.5 Hardware bridge | Partial | native `acquire()` mapping, permission flow, 3-browser truth table |
+| M2.4 Periodic Background Sync | ✅ | `periodicsync` registration + no-op fallback + capability surfacing (`capabilities.test.ts` 5 + `periodic-sync.spec.ts` 4.1/4.2) |
+| M2.5 Hardware bridge | ✅ | native `acquire()` mapping, permission flow, 3-browser truth table (`hardware.test.ts` 7 + `hardware.spec.ts` 5.2, platform-aware bluetooth — v0.2.0) |
 
 ---
 
@@ -120,6 +120,21 @@ but must be green before the v0.2.0 release gate.
 
 ---
 
+### Phase 5 — M3 Daemon bridge (v0.3.0, optional, additive) — kickoff 2026-08-13
+
+Phase 3 (Chapter 2 §2.3). Wire contract is **ADR-07** + Chapter 5 §5.4 (v1). Open question resolved: daemon **distribution is out of core scope** (installer, Chapter 2 §2.6); core ships only the client. Slices are vertical (client + tests), daemon side is a separate distribution and is only exercised through fakes/echo servers in CI.
+
+| Slice | Task | Files | Test gate | Status |
+|-------|------|-------|-----------|--------|
+| M3.1 | Wire spec + ADR-07 (frame grammar, state machine, security boundary, capability registry shapes) | `docs/05-core-modules-and-specs.md` §5.4, `docs/04-ADR/07-daemon-bridge-protocol.md` | docs review; no code | ✅ kickoff |
+| M3.2 | Client transport: WebSocket (`ws://127.0.0.1:<port>`), state machine (§5.4.4), heartbeat, exponential backoff, WebRTC DataChannel fallback, `features.daemon` gate | `core/daemon/transport.ts`, `core/daemon/connection.ts`, `core/index.ts` (config) | unit: state machine transitions, backoff schedule, schema/version rejection; e2e: handshake + echo via a tiny ws server in Playwright | ⬜ |
+| M3.3 | Capability registry + `daemon.grant(cap)` (gesture-gated, session-scoped); serial/socket/file-watch/sys-stats passthrough against the §5.4.6 table; `ERR_PERMISSION_DENIED`/`ERR_DAEMON_*` wiring | `core/daemon/registry.ts`, `core/daemon/grant.ts`, `core/hardware/index.ts` (daemon cap surfacing) | unit: grant gating + error codes (fakes); e2e: registry against a fake daemon | ⬜ |
+| M3.4 | Security hardening + fuzz: origin check on the client side, handshake schema lock, fuzz harness ≥ 1 M malformed frames (daemon distribution) | `core/daemon/schema.ts`, fuzz harness (daemon repo) | gate: fuzz green + Phase 1/2 full suite unchanged (fallback proof) | ⬜ |
+
+**M3 caveats:** real serial/sockets need a physical daemon → CI covers transport/registry/permission against fakes and a loopback echo server; device flows stay on the manual matrix (Ch. 8 §8.4). The WebRTC DataChannel fallback is exercised by unit test (state machine) only.
+
+---
+
 ## 11.3 Dependency graph
 
 ```
@@ -130,6 +145,9 @@ but must be green before the v0.2.0 release gate.
                     │
                     ▼
               4.1 ─► 4.2 ─► 5.1 ─► 5.2   (periodic + hardware)
+                                      │
+                                      ▼
+            M3.1 ─► M3.2 ─► M3.3 ─► M3.4 (daemon; additive, Phase 3)
 ```
 
 ## 11.4 Definition of done (per slice)

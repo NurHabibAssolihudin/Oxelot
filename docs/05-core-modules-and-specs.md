@@ -283,33 +283,90 @@ export interface HardwareBridge {
 
 ## 5.4 Module 3b — Daemon Bridge (Phase 3, optional)
 
+**Spec status:** v1 (M3.1 kickoff, ADR-07). Additive — core works identically without the daemon.
+
 ### 5.4.1 Purpose
-Out-of-browser hardware access (raw serial, sockets, file watchers) that Fugu cannot provide. Additive: core works identically without it.
+Out-of-browser hardware access (raw serial, sockets, file watchers, system stats, NFC polling without a gesture) that Fugu cannot provide. The daemon binary is **distributed separately** (installer, out of core scope, Chapter 2 §2.6); core only implements the client side of this contract.
 
 ### 5.4.2 Transport
-- Primary: `ws://127.0.0.1:<port>` (default port advertised via a well-known default, overridable in `OxelotConfig.daemon.port`).
-- Fallback: WebRTC DataChannel (negotiated manually) when the WebSocket handshake times out (>2s).
-- Heartbeat: JSON `{type:'ping'}` every 15s; `{type:'pong'}` expected within 5s; 2 missed ⇒ connection reset with backoff.
+- **Primary:** `ws://127.0.0.1:<port>` (default **47500**; overridable via `OxelotConfig.daemon.port`). Only `127.0.0.1` / `[::1]` / `localhost` host allowed.
+- **Fallback:** WebRTC DataChannel (negotiated manually) when the WebSocket handshake times out (> `connectTimeoutMs`, default 2000 ms).
+- **Heartbeat:** `{type:'ping'}` from the client every 15 s; `{type:'pong'}` expected from the daemon within 5 s; **2 missed beats ⇒ connection reset** with exponential backoff (500 ms → 1 s → 2 s … capped at 30 s, reset on `ready`, §5.4.5).
 
 ### 5.4.3 Frame layout (normative, v1)
 
+One JSON object per WebSocket message. Every message carries `type`; `hello`, `request`, `response`, `event`, `ping`, `pong` further carry `protocolVersion` (currently `1`). Unknown `type` or unsupported `protocolVersion` ⇒ the receiving end treats the frame as **malformed** (`ERR_DAEMON_SCHEMA` / `ERR_DAEMON_VERSION`).
+
 ```ts
-interface DaemonFrame {
-  v: 1                      // protocol version
-  id: string                // request correlation id
-  cap: string               // capability name, e.g. 'serial:read'
-  ok?: boolean              // present on responses
-  data?: unknown            // request params / response payload
-  error?: { code: string; message: string }
+type DaemonMessage =
+  // Connection lifecycle (client → daemon)
+  | { type: 'hello'; app: 'oxelot'; protocolVersion: 1; clientId: string }
+  // Capability advertisement (daemon → client, sent once after 'hello')
+  | { type: 'advertise'; protocolVersion: 1; caps: CapabilityAdvertisement[] }
+  // Capability RPC
+  | { type: 'request'; protocolVersion: 1; id: string; cap: string; data?: unknown }   // client → daemon
+  | { type: 'response'; protocolVersion: 1; id: string; cap: string; ok: true; data?: unknown }
+  | { type: 'response'; protocolVersion: 1; id: string; cap: string; ok: false; error: { code: string; message: string } }
+  | { type: 'event'; protocolVersion: 1; cap: string; data?: unknown }                 // daemon → client push (watch/stats)
+  // Keepalive
+  | { type: 'ping' } | { type: 'pong' }
+
+interface CapabilityAdvertisement {
+  cap: string                       // namespaced 'domain:action', e.g. 'serial:read'
+  permission: boolean               // true → daemon.grant(cap) required before any request
+  schema?: Record<string, unknown>  // informational request/response shape hint
 }
 ```
 
-### 5.4.4 Security boundary (normative)
-1. Connect only to `127.0.0.1` / `[::1]`; reject any other host.
-2. Handshake: client sends `{type:'hello', app:'oxelot', v:1}`; daemon replies with capability list; both sides validate schema.
-3. Per-capability permission: consumer must call `daemon.grant(cap)` (requires user gesture) before any `cap` frame is honored; otherwise `ERR_PERMISSION_DENIED`.
-4. No credentials/tokens on the wire; secrets stay in the daemon's own store.
-5. Fuzz target: ≥ 1M malformed frames must not crash the daemon nor bypass permissions (Phase 3 exit criteria, Chapter 2 §2.3).
+Rules:
+- `id` is a client-generated correlation id; responses echo it. An unknown `id` on a response ⇒ schema violation (resets the connection).
+- A client may pipeline independent `request`s; receive order of responses is not guaranteed.
+- `event` frames are fire-and-forget pushes tied to a granted capability (e.g., `file:watch` mutations).
+- `data` is capability-defined (see §5.4.6); the core bridge passes it through after schema validation of the *envelope*.
+
+### 5.4.4 Connection state machine (normative)
+
+```
+disconnected ──connect()──► connecting ──advertise received──► ready
+      ▲                          │   │
+      │  2 missed beats /        │   └─ hello not answered within connectTimeoutMs ─┐
+      │  schema/version error    │   └─ (optionally) WebRTC DataChannel fallback ───┤
+      └──backoff(500ms→30s cap)──┴── reset ─────────────────────────────────────────┘
+```
+
+- `disconnected → connecting` on `daemon.connect()` (or implicitly on first capability use).
+- `connecting → ready` only after a valid `advertise` (`protocolVersion:1`); the advertised `caps` populate the capability registry (§5.4.6).
+- `ready → disconnected` on: socket close, 2 missed heartbeats, `ERR_DAEMON_SCHEMA`/`ERR_DAEMON_VERSION` on a connection frame, or explicit `daemon.dispose()`.
+- On `ready → disconnected`, retry with exponential backoff (500 ms ×2, cap 30 s) while `features.daemon` is on and a consumer holds a `daemon` handle. Backoff resets on `ready`.
+- While `disconnected`, every capability call rejects with `ERR_DAEMON_CONNECT` (never queues).
+
+### 5.4.5 Security boundary (normative)
+
+1. Connect **only** to `127.0.0.1` / `[::1]` / `localhost`; reject any other host.
+2. **Origin gate:** the daemon accepts only connections whose `Origin` header is a local http(s) origin (host `localhost`, `127.0.0.1`, `[::1]`) or absent; pages on remote origins are rejected at the WebSocket handshake. The core client additionally refuses non-localhost URLs even if misconfigured.
+3. **Handshake:** client sends `{type:'hello', app:'oxelot', protocolVersion:1, clientId}`; daemon replies with the capability list (`advertise`); both ends validate the schema and version (v1 only, `ERR_DAEMON_VERSION` otherwise).
+4. **Per-capability permission:** a capability with `permission:true` is honoured only after the consumer calls `daemon.grant(cap)` (requires a **user gesture**, re-prompted per session); otherwise `ERR_PERMISSION_DENIED`.
+5. **No secrets on the wire:** no credentials/tokens travel over WebSocket; the daemon stores its own state. Advertised `schema` hints are informational, not normative.
+6. **Fuzz target:** ≥ 1 M malformed frames must not crash the daemon nor bypass permissions (Phase 3 exit criteria, Chapter 2 §2.3).
+
+### 5.4.6 Capability registry (normative home; implementations M3.3)
+
+Each capability is `domain:action` with a declared request/response shape in the registry (referenced from `advertise.caps[].schema`). v1 registry:
+
+| cap | permission | Request (`data`) | Response (`data`) | Errors |
+|-----|-----------|------------------|--------------------|--------|
+| `serial:list` | false | — | `[{ path, vendorId, productId }]` | `ERR_DAEMON_UNSUPPORTED` |
+| `serial:open` | true | `{ path, baudRate }` | `{ handle }` | `ERR_PERMISSION_DENIED`, `ERR_DAEMON_NOT_FOUND` |
+| `serial:read` | true | `{ handle, size }` | `{ bytes }` (base64) | `ERR_PERMISSION_DENIED` |
+| `serial:write` | true | `{ handle, bytes }` (base64) | `{}` | `ERR_PERMISSION_DENIED` |
+| `socket:connect` | true | `{ host, port }` | `{ handle }` | `ERR_PERMISSION_DENIED`, `ERR_SYNC_NETWORK` |
+| `socket:relay` | true | `{ handle, bytes }` (base64) | — (use `event` push) | `ERR_PERMISSION_DENIED` |
+| `file:watch` | true | `{ path }` | — (use `event` push) | `ERR_PERMISSION_DENIED`, `ERR_FILE_NOT_FOUND` |
+| `sys:stats` | false | — | `{ cpu, mem, uptimeMs }` | `ERR_DAEMON_UNSUPPORTED` |
+
+- Errors are the §5.6 codes (see below); capability-specific variants reuse core codes (`ERR_FILE_NOT_FOUND`, `ERR_SYNC_NETWORK`) or add no new ones.
+- Unknown capability in a `request` ⇒ `ERR_DAEMON_UNSUPPORTED` in the `response`.
+- This table is normative **for shape only**; actual OS backends land in M3.3 (the daemon and the client bridge both implement against this table).
 
 ---
 
@@ -338,8 +395,15 @@ export interface OxelotConfig {
   sync?: SyncConfig
   /** Register the bundled service worker when true (default false). */
   registerSW?: boolean
+  /** Daemon bridge settings (Phase 3, additive — see §5.4). */
+  daemon?: {
+    /** Daemon port on 127.0.0.1 (default 47500). */
+    port?: number
+    /** WebSocket handshake timeout in ms (default 2000). */
+    connectTimeoutMs?: number
+  }
   features?: {
-    daemon?: boolean          // Phase 3
+    daemon?: boolean          // Phase 3: enable the daemon bridge (default false)
     /** `true` → `oxelot-sync` periodic tag at default 12 h min interval; `number` → min interval ms (engine may clamp). Unsupported = no-op (§5.2.7). */
     periodicSync?: boolean | number
   }
@@ -422,6 +486,12 @@ export type OxelotEvent =
 | `ERR_DB_DISABLED` | SQLite sub-facade disabled (`dbEnabled: false`) |
 | `ERR_DB_SQL` | SQLite statement failed (WASM layer) |
 | `ERR_PERMISSION_DENIED` | Daemon capability not granted |
+| `ERR_DAEMON_CONNECT` | Daemon unreachable / connection failed (§5.4.4) |
+| `ERR_DAEMON_TIMEOUT` | Daemon handshake or request timed out |
+| `ERR_DAEMON_SCHEMA` | Daemon frame failed schema validation |
+| `ERR_DAEMON_VERSION` | Daemon protocol version mismatch |
+| `ERR_DAEMON_UNSUPPORTED` | Daemon capability not advertised / not implemented |
+| `ERR_DAEMON_NOT_FOUND` | Daemon resource not found (e.g., serial device absent) |
 | `ERR_UNKNOWN` | Unclassified failure |
 
 All errors are thrown as `OxelotError` (`instanceof Error`, `code`, `message`, `cause?`).

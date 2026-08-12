@@ -97,6 +97,7 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 
 ### Milestone M3.1 — Daemon wire spec
 **Deliverables:** protocol spec document (`ws://127.0.0.1:<port>`), handshake, capability advertisement frame, heartbeat interval, message frame layout (see §5.4.3). Versioned (`protocolVersion: 1`).
+**Slice:** M3.1 ✅ kickoff 2026-08-13 — wire spec in Chapter 5 §5.4 (v1) + [ADR-07](04-ADR/07-daemon-bridge-protocol.md); M3.2–M3.4 pending.
 
 ### Milestone M3.2 — Transport layer
 **Deliverables:** WebSocket primary transport, WebRTC DataChannel fallback (port conflict/drop), connection state machine (`disconnected → connecting → handshake → ready`), auto-retry with backoff.
