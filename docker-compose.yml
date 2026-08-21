@@ -1,0 +1,37 @@
+# Oxelot containerized development.
+#
+# The repo is bind-mounted into /app; all heavy toolchains (Node 22, Rust +
+# wasm32-wasip1, zig 0.16, Playwright Chromium deps) live in the
+# oxelot-dev image, keeping the host clean. Named volumes shadow the
+# directories that must NOT pollute the Windows filesystem and give
+# Linux-native I/O speed:
+#
+#   oxelot_node_modules  — npm workspace install (Linux binaries: esbuild…)
+#   oxelot_wasm_target   — cargo incremental artifacts (GB-scale)
+#   oxelot_playwright    — Playwright browser binaries (revision-exact to
+#                          the repo's package-lock.json)
+#
+# Usage: .\scripts\d.ps1 help
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: oxelot-dev:latest
+    working_dir: /app
+    init: true
+    stdin_open: true
+    tty: true
+    volumes:
+      - .:/app
+      - oxelot_node_modules:/app/node_modules
+      - oxelot_wasm_target:/app/wasm/target
+      - oxelot_playwright:/ms-playwright-browsers
+    ports:
+      - "5199:5199"
+
+volumes:
+  oxelot_node_modules:
+  oxelot_wasm_target:
+  oxelot_playwright:

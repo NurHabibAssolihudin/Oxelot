@@ -54,6 +54,19 @@ function App() {
 
 Full workflow in [Chapter 10](docs/10-user-guide.md).
 
+## Containerized Development (zero host setup)
+
+Everything heavy (Node 22, Rust + `wasm32-wasip1`, zig 0.16, Playwright Chromium) lives in the `oxelot-dev` image — the laptop stays clean:
+
+```powershell
+.\scripts\d.ps1 quality   # build + lint + depcruise + typecheck + tests + size gate
+.\scripts\d.ps1 wasm      # build the WASM SQLite artifact
+.\scripts\d.ps1 e2e       # full default Chromium suite
+.\scripts\d.ps1 shell     # interactive bash with every toolchain
+```
+
+VS Code: "Reopen in Container" (`.devcontainer/`). See [Chapter 8 §8.1.1a](docs/08-developer-guide.md).
+
 ---
 
 ## Repository Status

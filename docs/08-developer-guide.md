@@ -28,9 +28,29 @@ npx playwright install --with-deps chromium
 zig version
 ```
 
+### 8.1.1a Containerized development (recommended on Windows)
+
+All heavy toolchains — Node 22, Rust + `wasm32-wasip1`, zig 0.16, Playwright
+Chromium system deps — ship inside the `oxelot-dev` image (`docker/Dockerfile`,
+pins identical to CI). The host needs nothing but Docker Desktop; the repo is
+bind-mounted into `/app`, and named volumes keep `node_modules`, cargo
+artifacts, and browser binaries off the Windows filesystem:
+
+```powershell
+.\scripts\d.ps1 quality   # build + lint + depcruise + typecheck + unit tests + G7 size gate
+.\scripts\d.ps1 wasm      # build:wasm -> packages/core/dist/wasm/ (visible on the host)
+.\scripts\d.ps1 e2e       # full default Chromium suite, incl. SQLite smoke
+.\scripts\d.ps1 shell     # interactive bash with every toolchain
+```
+
+VS Code users: open the folder and "Reopen in Container" (`.devcontainer/`).
+Notes: the first `compose run` downloads ~3 GB of image layers once; browsers
+download once per playwright version into the volume; `.\scripts\d.ps1 clean`
+removes all container state without touching the host repo.
+
 ### 8.1.2 macOS/Windows notes
 - macOS: standard Homebrew toolchain works; SIP does not affect this project.
-- Windows: prefer WSL2 for the Rust/wasm build; Playwright runs fine under WSL2 with X-less headless mode.
+- Windows: prefer WSL2 for the Rust/wasm build; Playwright runs fine under WSL2 with X-less headless mode. The containerized workflow above replaces the manual WSL2 setup entirely.
 
 ---
 

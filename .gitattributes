@@ -1,0 +1,9 @@
+# Shell scripts must keep LF so they execute inside the Linux dev container.
+scripts/zigcc text eol=lf
+scripts/zigcc.cmd text eol=crlf
+scripts/*.sh text eol=lf
+
+# Windows-only files keep CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
