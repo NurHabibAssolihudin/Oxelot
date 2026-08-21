@@ -46,6 +46,16 @@ export default tseslint.config(
     },
   },
   {
+    files: ['packages/*/test/**/*.{ts,tsx}'],
+    rules: {
+      // Test fakes conventionally prefix intentionally-unused params with `_`.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  {
     files: ['packages/core/src/**/*.ts'],
     rules: {
       'no-restricted-globals': [

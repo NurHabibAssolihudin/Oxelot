@@ -17,17 +17,23 @@ export interface MutationClock {
   newId?: () => string
 }
 
+export interface StorageMutationOptions extends MutationClock {
+  /** Envelope operation; defaults to `upsert` (the D8 write path). */
+  op?: 'upsert' | 'delete'
+}
+
 /**
- * Build the envelope a `useOxelotStorage().write(value)` enqueues (D8 /
- * §6.3.1): an `upsert` mutation whose `collection` namespaces the storage key,
- * so the server can route `storage:${key}` payloads back to the right document.
+ * Build the envelope a `useOxelotStorage().write(value)` / `.remove()` enqueues
+ * (D8 / §6.3.1): an `upsert` or `delete` mutation whose `collection`
+ * namespaces the storage key, so the server can route `storage:${key}`
+ * payloads back to the right document.
  */
-export function makeStorageMutation(key: string, value: unknown, opts: MutationClock = {}): OxelotMutation {
+export function makeStorageMutation(key: string, value: unknown, opts: StorageMutationOptions = {}): OxelotMutation {
   return {
     id: (opts.newId ?? newMutationId)(),
     schemaVersion: 1,
     collection: storageCollection(key),
-    op: 'upsert',
+    op: opts.op ?? 'upsert',
     payload: value,
     createdAt: (opts.now ?? Date.now)(),
     attempts: 0,

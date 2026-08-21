@@ -33,7 +33,7 @@ but must be green before the v0.2.0 release gate.
 | D5 | §6.3.1 auto-flush on connectivity restore | No `online` listener, no SW `sync` listener, no post-enqueue flush | Medium — delivery requires manual `flush()` |
 | D6 | §5.6 error table | `ERR_DB_SQL`, `ERR_DB_DISABLED` implemented but absent from the spec table | Low — docs drift |
 | D7 | §5.3.3 `acquire()` maps to native permission prompt | `acquire()` only asserts availability; never `ERR_HW_DENIED` | Medium — Phase 2.5 item |
-| D8 | §5.7 write → optimistic + envelope enqueue (§6.3.1) | ✅ resolved (v0.1.1 phase 4 slice 5.3): `useOxelotStorage.write` persists the value and enqueues a `storage:${key}` upsert envelope via `makeStorageMutation`, rolls back on failure (second `storage-change`); helper unit-tested `optimistic.test.ts` | Was Phase 2 item |
+| D8 | §5.7 write → optimistic + envelope enqueue (§6.3.1) | ✅ resolved (v0.1.1 phase 4 slice 5.3): `useOxelotStorage.write` persists the value and enqueues a `storage:${key}` upsert envelope via `makeStorageMutation`, rolls back on failure (second `storage-change`); helper unit-tested `optimistic.test.ts`. **Extended (v0.2.1, additive):** `makeStorageMutation(key, value, { op: 'delete' })` backs `useOxelotStorage.remove` so deletions sync with the same exactly-once semantics | Was Phase 2 item |
 | D9 | M2.1 SW registered by `Oxelot.init` when `registerSW: true` | ✅ resolved by slice 1.1 (v0.1.1); `sw.ts` relay + `sync` listener added by 1.2/1.3; shared queue via 1.4 — all in v0.1.1 | High — was Phase 2 gate |
 | D10 | §6.2.4 bridge `pending` load metric | `OxelotBridge` exposes `pendingCount` (see §9.3.1); pool `load()` uses `inFlight` | Info — metric source differs from spec but `load()` is the public one |
 
@@ -117,6 +117,17 @@ but must be green before the v0.2.0 release gate.
 3. Tag/publish `@oxelot/core` then `@oxelot/react`.
 4. Write "Known limitations" appendix.
 5. Update README checkboxes.
+
+---
+
+### Stabilization — v0.2.1 (post-v0.2.0 fixes, additive only)
+
+| Fix | Detail | Test gate |
+|-----|--------|-----------|
+| `useOxelotSyncStatus` snapshot bug | `getSnapshot` returned a constant `IDLE_SYNC_STATE`, so the hook never re-rendered on sync-state changes; dead no-op subscription removed. Now caches by value (`sameSyncState`) and seeds `pending`/`deadLetters` from the persisted queue on mount | `hooks.test.tsx` (regression: emitted states + seed) |
+| `useOxelotStorage.remove` sync parity | `remove()` deleted locally only; now mirrors `write()` (§6.3.2): optimistic local removal + durable storage delete + `delete` envelope via `makeStorageMutation(key, null, { op: 'delete' })`, rollback on failure | `hooks.test.tsx` + `optimistic.test.ts` |
+| `makeStorageMutation` op option | Additive public API: `StorageMutationOptions extends MutationClock` with optional `op: 'upsert' \| 'delete'` (default `upsert`). Recorded as a D8 extension per B-4 | `optimistic.test.ts` |
+| React unit-test suite | First unit tests for `packages/react` (18 tests over all four hooks) via `@testing-library/react` + jsdom; vitest resolves `@oxelot/core` to TS source so tests run hermetically without a prior build | `npm run test` |
 
 ---
 

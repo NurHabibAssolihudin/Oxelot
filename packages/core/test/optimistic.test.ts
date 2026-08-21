@@ -15,6 +15,19 @@ describe('makeStorageMutation (D8 §6.3.1 optimistic envelope)', () => {
     })
   })
 
+  it('builds a delete envelope when op: delete is requested', () => {
+    const m = makeStorageMutation('greeting', null, { now: () => 124, newId: () => 'id-2', op: 'delete' })
+    expect(m).toEqual({
+      id: 'id-2',
+      schemaVersion: 1,
+      collection: 'storage:greeting',
+      op: 'delete',
+      payload: null,
+      createdAt: 124,
+      attempts: 0,
+    })
+  })
+
   it('distinct writes to the same key produce distinct envelope ids', () => {
     const a = makeStorageMutation('k', 1)
     const b = makeStorageMutation('k', 2)

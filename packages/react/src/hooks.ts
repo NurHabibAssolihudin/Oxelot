@@ -31,9 +31,9 @@ export function useOxelot(config?: OxelotConfig): Oxelot | null {
 }
 
 /**
- * Child hooks reuse an instance owned by a parent `useOxelot`; they never spawn
- * their own pool. Callers that want a standalone hook should own the instance
- * with `useOxelot()` and pass it in.
+ * Child hooks accept an instance owned by a parent `useOxelot`. When none is
+ * passed they fall back to their own `useOxelot()` call, which spawns a full
+ * worker pool for that component tree — pass a shared instance to avoid it.
  */
 function useSharedOxelot(instance?: Oxelot | null): Oxelot | null {
   return instance ?? null
@@ -104,9 +104,25 @@ export function useOxelotStorage<T>(
 
   const remove = useCallback(async () => {
     if (!instance) return
-    await instance.storage.remove(key)
+    // Mirror write() (§6.3.2): optimistic local removal, then make both copies
+    // durable — the storage delete AND a `delete` sync envelope (write-ahead).
+    // A failure restores the previous value locally and via storage-change.
+    const snapshot = data
     setData(null)
-  }, [instance, key])
+    try {
+      await instance.storage.remove(key)
+      await Oxelot.enqueue(instance, makeStorageMutation(key, null, { op: 'delete' }))
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)))
+      try {
+        await instance.storage.set(key, snapshot)
+      } catch {
+        // Best-effort rollback persist; local state is reverted regardless.
+      }
+      setData(snapshot)
+      throw err
+    }
+  }, [instance, key, data])
 
   return { data, loading, error, write, remove }
 }
@@ -160,6 +176,15 @@ export function useOxelotDB<T>(
 
 const IDLE_SYNC_STATE: SyncState = { kind: 'idle' }
 
+/** Value equality for `SyncState` so duplicate emits never re-render. */
+function sameSyncState(a: SyncState, b: SyncState): boolean {
+  return (
+    a.kind === b.kind &&
+    ('pending' in a ? a.pending : -1) === ('pending' in b ? b.pending : -1) &&
+    ('deadLetters' in a ? a.deadLetters : -1) === ('deadLetters' in b ? b.deadLetters : -1)
+  )
+}
+
 export function useOxelotSyncStatus(oxelot?: Oxelot | null): {
   state: SyncState
   pending: number
@@ -170,22 +195,48 @@ export function useOxelotSyncStatus(oxelot?: Oxelot | null): {
   const instance = oxelot ?? own
   const sync = instance?.sync
 
-  const state = useSyncExternalStore<SyncState>(
-    (cb) => {
-      const off = sync?.onStateChange(cb)
-      return off ?? (() => undefined)
+  // Latest state from the sync service, cached by value: `getSnapshot` must
+  // return a stable reference between emits or useSyncExternalStore loops.
+  const snapshotRef = useRef<{ raw: SyncState; cached: SyncState }>({
+    raw: IDLE_SYNC_STATE,
+    cached: IDLE_SYNC_STATE,
+  })
+
+  const apply = useCallback(
+    (next: SyncState, notify: () => void): void => {
+      if (!sameSyncState(snapshotRef.current.raw, next)) {
+        snapshotRef.current = { raw: next, cached: next }
+        notify()
+      }
     },
-    () => IDLE_SYNC_STATE,
+    [],
   )
 
-  useEffect(() => {
-    if (!sync) return
-    void sync.status().then(({ pending, deadLetters }) => {
-      if (pending > 0 || deadLetters > 0) {
-        sync.onStateChange(() => undefined)
+  const getSnapshot = useCallback(() => snapshotRef.current.cached, [])
+
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      if (!sync) return () => undefined
+      let active = true
+      // Seed from the persisted queue once per subscription: a remount must
+      // show real pending/dead-letter counts before the next flush emits.
+      // Duplicate seeds are idempotent via the sameSyncState guard.
+      void sync.status().then(({ pending, deadLetters }) => {
+        if (!active || pending === 0) return
+        const next: SyncState =
+          deadLetters > 0 ? { kind: 'dead_letter', pending, deadLetters } : { kind: 'queued', pending }
+        apply(next, cb)
+      })
+      const off = sync.onStateChange((next) => apply(next, cb))
+      return () => {
+        active = false
+        off()
       }
-    })
-  }, [sync])
+    },
+    [apply, sync],
+  )
+
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   const pending = state.kind === 'idle' ? 0 : 'pending' in state ? state.pending : 0
   const deadLetters = state.kind === 'dead_letter' ? state.deadLetters : 0

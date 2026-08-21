@@ -5,6 +5,7 @@ export type { StorageBackend, StorageProvider, OxelotFile } from './core/storage
 export type { HardwareBridge, HardwareCapabilities, HardwareCapability } from './core/hardware'
 export type { SyncService, OxelotMutation, SyncState } from './core/sync'
 export { makeStorageMutation, newMutationId, storageCollection } from './core/sync'
+export type { StorageMutationOptions } from './core/sync'
 export { OxelotError } from './errors'
 export type { OxelotErrorCode } from './errors'
 export { DaemonBridge, DaemonConnection, nextBackoffDelay, parseDaemonMessage, toDaemonErrorCode, DAEMON_PROTOCOL_VERSION } from './core/daemon'
