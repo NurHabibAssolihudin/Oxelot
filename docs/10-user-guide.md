@@ -86,7 +86,7 @@ function InventoryEditor() {
 Behavior contract (§6.3):
 - `write` resolves after durable persistence (via worker); local state updates immediately.
 - If the device is offline, the mutation is queued as an `OxelotMutation` and delivered later (below).
-- `remove` deletes the key.
+- `remove` deletes the key AND enqueues a `delete` envelope with the same exactly-once semantics as `write`.
 
 ### 10.3.2 Structured queries (`useOxelotDB`)
 
@@ -181,6 +181,34 @@ if (caps.nfc) {
   await oxelot.hardware.acquire('nfc') // triggers user prompt
 }
 ```
+
+### 10.3.6 Local daemon bridge (optional, v0.3.0)
+
+Out-of-browser hardware (raw serial, sockets, file watch, sys stats) via a
+local companion daemon over `ws://127.0.0.1`. Everything works identically
+without it — the bridge is additive and off unless configured:
+
+```ts
+const oxelot = await Oxelot.init({
+  daemon: { url: 'ws://127.0.0.1:9090' }, // omit → bridge stays null
+  // features: { daemon: false },          // hard-off even with a url
+})
+
+if (oxelot.daemon) {
+  const d = oxelot.daemon
+  await d.connect()                        // retries in background until ready
+  if (d.has('serial:list')) {
+    const ports = await d.request<SerialPortInfo[]>('serial:list')
+    // permission:true caps need an in-gesture grant once per session:
+    btn.onclick = () => d.grant('serial:read')
+    const data = await d.request('serial:read', { handle: 'h1', size: 64 })
+  }
+}
+```
+
+- The daemon binary is distributed separately; core only implements the client (ADR-07, §5.4).
+- Un-granted `permission: true` capabilities reject `ERR_PERMISSION_DENIED`; absent capabilities reject `ERR_DAEMON_UNSUPPORTED`.
+- `hardware.capabilities()` surfaces `daemon: ready` while the bridge is connected.
 
 ---
 

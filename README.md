@@ -75,7 +75,7 @@ VS Code: "Reopen in Container" (`.devcontainer/`). See [Chapter 8 §8.1.1a](docs
 - [x] Phase 2 — Hardware & Background Layer `v0.2.0` — **implemented** (M2.1 SW relay, M2.2 durable queue + G4 soak, M2.3 Web Locks, M2.4 periodic sync, M2.5 hardware bridge)
 - [x] Stabilization `v0.2.1` — **implemented** (`useOxelotSyncStatus` snapshot fix + queue seeding, `useOxelotStorage.remove` now enqueues a `delete` envelope via `makeStorageMutation(..., { op: 'delete' })`, first React unit-test suite — see docs/11 "Stabilization — v0.2.1")
 - [x] Stabilization `v0.2.2` — **implemented** (sync queue O(n) → chunked layout v2: manifest + ≤500-envelope chunks, two-phase compaction, transparent legacy migration; exactly-once/pop-on-success/checkpoint semantics unchanged — see docs/11 "Stabilization — v0.2.2")
-- [ ] Phase 3 — Daemon / Advanced Bridge `v0.3.0`
+- [x] Phase 3 — Daemon / Advanced Bridge `v0.3.0` — **implemented** (M3.1 wire spec + ADR-07, M3.2 ws/rtc transports + state machine, M3.3 capability registry + gesture-gated grants, M3.4 security boundary + 1M-frame fuzz; all M3 exit criteria checked; tabbed playground demo incl. serial passthrough)
 
 ### Phase 2 implementation notes (v0.2.0)
 

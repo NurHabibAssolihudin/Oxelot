@@ -95,6 +95,31 @@ test('no-DOM bootstrap probe (B-1): core boots without window/document', async (
   expect(canInstantiate).toBe(true)
 })
 
+test('M3 fallback: daemon bridge stays absent unless configured', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    type DaemonlessOxelot = { daemon: unknown; dispose(): Promise<void> }
+    const w = window as TestWindow & {
+      __oxelot: { Oxelot: { init(cfg: Record<string, unknown>): Promise<DaemonlessOxelot> } }
+    }
+    // Unconfigured: the getter must resolve to null and never open a socket.
+    const plain = await w.__oxelot.Oxelot.init({ workers: 1 })
+    const noDaemon = plain.daemon === null
+    await plain.dispose()
+    // §5.4.4 additive gate: features.daemon === false wins over a configured URL.
+    const gated = await w.__oxelot.Oxelot.init({
+      workers: 1,
+      daemon: { url: 'ws://127.0.0.1:9' },
+      features: { daemon: false },
+    })
+    const gateWins = gated.daemon === null
+    await gated.dispose()
+    return { noDaemon, gateWins }
+  })
+  expect(result.noDaemon).toBe(true)
+  expect(result.gateWins).toBe(true)
+})
+
 test('SQLite WASM: db round-trip and persistence across reload (M1.4)', async ({ page }) => {
   await page.goto('/')
   const pre = page.locator('pre')

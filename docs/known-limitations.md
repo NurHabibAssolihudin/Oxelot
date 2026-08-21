@@ -41,6 +41,7 @@ Recorded per Chapter 8 §8.4.4 (manual device matrix) and the release procedure
 | Desktop truth table only | `hardware.spec.ts` records the *desktop* truth table for Chromium/WebKit/Firefox (e.g., `nfc:false`, `vibration:false` on desktop Firefox/WebKit). Android-only APIs (NFC) must be re-verified on-device. | `hardware.spec.ts` EXPECTED |
 | OS-dependent `bluetooth` exposure | Chromium exposes `navigator.bluetooth` only when the host has a Bluetooth stack (Windows/macOS/Android); headless Linux runners (CI, no BlueZ service) report `bluetooth:false`. `EXPECTED.chromium` in `hardware.spec.ts` is platform-aware for this field (checked via Linux probe: `usb`/`wakeLock`/`fileSystemAccess`/`vibration` remain `true`). | `hardware.spec.ts` 5.2 |
 | Firefox not in the default suite | The firefox project is env-gated (`PW_MATRIX=1`) because the browser isn't installed by default; run it explicitly for the 3-browser matrix. | `playwright.config.ts` |
+| Daemon binary distributed separately | Core ships only the client (ADR-07); real serial/socket/file flows need a locally running oxelot daemon. CI covers transport, registry, grants, and error paths against fakes/echo servers. The playground Daemon tab demonstrates every call path including graceful `ERR_DAEMON_*` failures. | `daemon.spec.ts`, `core/daemon/`, ADR-07 |
 
 ## Platform / browser matrix (manual, not automated)
 

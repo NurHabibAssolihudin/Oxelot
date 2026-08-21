@@ -142,6 +142,15 @@ The v1 queue persisted the whole envelope array under `oxelot.sync.queue`, so ev
 
 Bundle impact: +~1.5 KB gzip on `@oxelot/core` (16.9 KB vs 35 KB G7 budget).
 
+### API freeze review — v0.3.0 (Chapter 2 §2.5 step 1)
+
+**Deviation ledger D1–D10: all closed.** D8 extended additively in v0.2.1 (`StorageMutationOptions.op`); D6 resolved in the §5.6 table (`ERR_DB_SQL`/`ERR_DB_DISABLED`/`ERR_DAEMON_*` present); D4 verified live (`core/index.ts` re-emits `sync-state` on `Oxelot.on()`); the rest closed by M2.x/M3.x milestones above and in §11.1.3.
+
+**Exported surface audit vs Chapter 5 contracts (additive-only since 0.2.0):**
+- `@oxelot/core`: `Oxelot` facade (`storage`, `db`, `sync`, `hardware`, `pool`, `sourceTab`, `daemon?`, `syncCapabilities()`, `registerServiceWorker()`, static `init`/`enqueue`, `on`, `dispose`) · config types incl. `daemon` + `features.daemon`/`features.periodicSync` · `makeStorageMutation`/`newMutationId`/`storageCollection` + `StorageMutationOptions` · `OxelotError` + code union · daemon client surface (`DaemonBridge`, `GrantGate`, registry/schema helpers, protocol types).
+- `@oxelot/react`: `useOxelot`, `useOxelotStorage`, `useOxelotDB`, `useOxelotSyncStatus` + core re-export.
+- No renames/removals; every addition has a test gate listed above. Semver target for this release: **0.3.0 (minor)** per Chapter 2 §2 versioning (Phase 3 = v0.3.0).
+
 ---
 
 ### Phase 5 — M3 Daemon bridge (v0.3.0, optional, additive) — kickoff 2026-08-13

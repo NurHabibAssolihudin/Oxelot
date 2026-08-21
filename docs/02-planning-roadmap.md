@@ -113,9 +113,9 @@ Versions: v0.1.0 = Phase 1 · v0.2.0 = Phase 2 · v0.3.0 = Phase 3. Each phase e
 
 ### M3 Exit Criteria
 - [x] Fuzzing run (≥ 1M malformed frames) yields no memory issues and no unauthorized capability access.
-- [ ] Fallback: with daemon absent, all Phase 1+2 features pass unchanged.
-- [ ] Auth round-trip test: unauthorized frame rejected with `ERR_PERMISSION_DENIED`.
-- [ ] Optional-criteria demo: serial passthrough read/write in the playground.
+- [x] Fallback: with daemon absent, all Phase 1+2 features pass unchanged. *(No default spec or the playground configures `features.daemon`/`daemon.url`; smoke adds an explicit probe — `daemon === null` unconfigured and with `features.daemon: false` overriding a URL — `smoke.spec.ts` "M3 fallback".)*
+- [x] Auth round-trip test: unauthorized frame rejected with `ERR_PERMISSION_DENIED`. *(Wire-level against the fake WS daemon: `daemon.spec.ts` M3.3 — un-granted request rejected client-side, permissionless cap passes, real-click grant unlocks; plus bridge-level unit coverage in `daemon.test.ts`.)*
+- [x] Optional-criteria demo: serial passthrough read/write in the playground. *(Daemon tab: connect → capability list → `serial:list`/`open`/`read`/`write` with in-gesture `grant`; graceful `ERR_DAEMON_*` paths when no daemon is running — `playground/src/App.tsx` DaemonPanel. Execution requires a separately distributed daemon binary, out of core scope §2.6.)*
 
 ---
 

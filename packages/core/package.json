@@ -1,6 +1,6 @@
 {
   "name": "@oxelot/core",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Open-Source Low-Level PWA Native-Bridge Library — framework-agnostic core",
   "type": "module",
   "license": "MIT",
