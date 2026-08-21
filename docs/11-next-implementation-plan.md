@@ -129,6 +129,19 @@ but must be green before the v0.2.0 release gate.
 | `makeStorageMutation` op option | Additive public API: `StorageMutationOptions extends MutationClock` with optional `op: 'upsert' \| 'delete'` (default `upsert`). Recorded as a D8 extension per B-4 | `optimistic.test.ts` |
 | React unit-test suite | First unit tests for `packages/react` (18 tests over all four hooks) via `@testing-library/react` + jsdom; vitest resolves `@oxelot/core` to TS source so tests run hermetically without a prior build | `npm run test` |
 
+### Stabilization — v0.2.2 (sync queue O(n) → chunked layout)
+
+The v1 queue persisted the whole envelope array under `oxelot.sync.queue`, so every enqueue, checkpoint, and final drain write rewrote O(queue) bytes (quadratic at scale: ~n²/100 envelopes written per drain at checkpoint=50).
+
+| Change | Detail | Test gate |
+|--------|--------|-----------|
+| Chunked layout (v2) | Manifest `{ v: 2, base, count, chunkSize, chunkCount }` + ≤`chunkSize`-envelope chunk keys (`oxelot.sync.queue.c.<i>`); default 500. Enqueue and checkpoints rewrite only touched chunks — O(chunk) | `queue.test.ts` rotation + dedup across boundaries |
+| Two-phase compaction | Survivors go to fresh keys above the consumed range → manifest flips atomically → old keys tombstoned as `[]` (KvLike has no delete). Crash before the flip leaves the old view intact; base advances only on delivered progress | `queue.test.ts` compaction + backoff-only-drain key stability |
+| Legacy migration | First read detecting the v1 array folds it into chunks write-ahead, then overwrites the key with the manifest; idempotent under crashes and mixed old-tab/new-SW fleets | `queue.test.ts` legacy migration (+ soak seeds via legacy array) |
+| Semantics unchanged | Exactly-once by id (tail-first dedup scan), pop-on-success FIFO delivery, crash bound ≤ checkpoint envelopes, backoff/dead letters untouched | all prior queue tests + 10k soak + e2e sync-relay/web-locks (Chromium) |
+
+Bundle impact: +~1.5 KB gzip on `@oxelot/core` (16.9 KB vs 35 KB G7 budget).
+
 ---
 
 ### Phase 5 — M3 Daemon bridge (v0.3.0, optional, additive) — kickoff 2026-08-13

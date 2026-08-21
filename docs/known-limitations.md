@@ -23,6 +23,7 @@ Recorded per Chapter 8 §8.4.4 (manual device matrix) and the release procedure
 | `BroadcastChannel`/`sessionStorage` availability | Cross-tab `storage-change` degrades to a no-op where these are unavailable (privacy modes); single-tab behaviour is unchanged. | ADR-06 |
 | Web Locks: `ifAvailable` co-ordination unreliable | Some Chromium builds grant `ifAvailable: true` requests even while another realm holds the lock, so flush arbitration uses **blocking** `oxelot-sync` acquisition (exactly one active flusher) and the `oxelot-storage:<name>` guard uses blocking locks. `ifAvailable`/skip semantics exist as diagnostics only. | M2.3 §5.2.5, slice 0.2 caveat |
 | Web Locks availability in realms | The storage guard and SW flush lock degrade to no-ops where `navigator.locks` is unavailable (Node, and engine/worker combinations lacking Web Locks); correctness then falls back to IDB transaction atomicity + consumer idempotency by `id`. | `core/storage/locks.ts`, `sw.ts` |
+| Sync-queue tombstone keys | The v2 chunked queue has no kv delete: compacted-away chunk keys are overwritten with `[]` and stay behind as tiny records. Bounded by the total envelopes ever delivered / chunk size; a drain that delivers nothing never advances the base. | `core/sync/queue.ts` (v0.2.2), docs/11 |
 
 ## Background sync (M2.4)
 

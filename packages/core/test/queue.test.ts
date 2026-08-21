@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { PersistentSyncQueue } from '../src/core/sync/queue'
+import { PersistentSyncQueue, loadPersistedQueue } from '../src/core/sync/queue'
 import { WebLock } from '../src/core/sync/web-lock'
 import type { OxelotMutation } from '../src/core/sync/envelope'
 
@@ -125,9 +125,9 @@ describe('PersistentSyncQueue backoff scheduling', () => {
     await queue.enqueue(makeMutation('a'))
 
     await queue.flush()
-    const stored = await kv.get<OxelotMutation[]>('oxelot.sync.queue')
-    expect(stored?.[0]?.attempts).toBe(1)
-    expect(stored?.[0]?.nextRetryAt).toBeGreaterThan(Date.now())
+    const stored = await loadPersistedQueue(kv)
+    expect(stored[0]?.attempts).toBe(1)
+    expect(stored[0]?.nextRetryAt).toBeGreaterThan(Date.now())
 
     // A flush before the backoff window expires must not touch the envelope.
     const again = await queue.flush()
@@ -143,13 +143,15 @@ describe('PersistentSyncQueue backoff scheduling', () => {
     await queue.enqueue(makeMutation('a'))
 
     await queue.flush()
-    const stored = await kv.get<OxelotMutation[]>('oxelot.sync.queue')
-    const next = stored?.[0]?.nextRetryAt ?? 0
+    const stored = await loadPersistedQueue(kv)
+    const next = stored[0]?.nextRetryAt ?? 0
 
     // Simulate time passing past the scheduled window by rewriting nextRetryAt.
-    const mutated = stored?.[0]
+    const mutated = stored[0]
     if (mutated) {
       mutated.nextRetryAt = Date.now() - 1
+      // Legacy-array seeding is intentional: it also exercises the v1→v2
+      // migration path on the next flush.
       await kv.set('oxelot.sync.queue', [mutated])
     }
 
@@ -171,8 +173,8 @@ describe('PersistentSyncQueue backoff scheduling', () => {
     const reloaded = new PersistentSyncQueue(kv, { deliver })
     const { pending } = await reloaded.status()
     expect(pending).toBe(1)
-    const stored = await kv.get<OxelotMutation[]>('oxelot.sync.queue')
-    expect(stored?.[0]?.nextRetryAt).toBeGreaterThan(0)
+    const stored = await loadPersistedQueue(kv)
+    expect(stored[0]?.nextRetryAt).toBeGreaterThan(0)
   })
 })
 
@@ -221,8 +223,8 @@ describe('PersistentSyncQueue exactly-once & peek (M2.2)', () => {
     // Capture the persisted queue state at the moment each delivery starts.
     const observed: string[] = []
     const deliver = vi.fn().mockImplementation(async (m: OxelotMutation) => {
-      const q = await kv.get<OxelotMutation[]>('oxelot.sync.queue')
-      observed.push((q ?? []).map((x) => x.id).join(','))
+      const q = await loadPersistedQueue(kv)
+      observed.push(q.map((x) => x.id).join(','))
       void m
     })
     const queue = new PersistentSyncQueue(kv, { deliver }, undefined, { checkpoint: 1 })
@@ -252,9 +254,115 @@ describe('PersistentSyncQueue exactly-once & peek (M2.2)', () => {
     const result = await queue.flush()
     expect(result.delivered).toBe(2)
     expect(result.deadLetters).toBe(0)
-    const stored = await kv.get<OxelotMutation[]>('oxelot.sync.queue')
-    expect(stored?.map((m) => m.id)).toEqual(['b'])
-    expect(stored?.[0]?.nextRetryAt).toBeGreaterThan(Date.now())
+    const stored = await loadPersistedQueue(kv)
+    expect(stored.map((m) => m.id)).toEqual(['b'])
+    expect(stored[0]?.nextRetryAt).toBeGreaterThan(Date.now())
+  })
+})
+
+describe('PersistentSyncQueue chunked layout (v2)', () => {
+  it('migrates a legacy single-array queue and switches the key to the manifest', async () => {
+    const kv = new MemoryKv()
+    const deliver = vi.fn().mockResolvedValue(undefined)
+    const queue = new PersistentSyncQueue(kv, { deliver })
+    await kv.set('oxelot.sync.queue', [makeMutation('l1'), makeMutation('l2')])
+    await queue.enqueue(makeMutation('new'))
+
+    const head = await kv.get<{ v: number; count: number }>('oxelot.sync.queue')
+    expect(head?.v).toBe(2) // legacy array replaced by the manifest
+    expect(head?.count).toBe(3)
+
+    const result = await queue.flush()
+    expect(result.delivered).toBe(3)
+    expect(deliver).toHaveBeenCalledTimes(3)
+  })
+
+  it('rotates chunks at chunkSize and deduplicates across chunk boundaries', async () => {
+    const kv = new MemoryKv()
+    const deliver = vi.fn().mockResolvedValue(undefined)
+    const queue = new PersistentSyncQueue(kv, { deliver }, undefined, { chunkSize: 2 })
+    for (const id of ['a', 'b', 'c', 'd', 'e']) await queue.enqueue(makeMutation(id))
+
+    const head = await kv.get<{ v: number; count: number; chunkCount: number }>('oxelot.sync.queue')
+    expect(head?.count).toBe(5)
+    expect(head?.chunkCount).toBe(3)
+
+    // Re-enqueue an id that lives in the FIRST chunk (tail-first scan must
+    // still find it) — pending stays 5.
+    await queue.enqueue(makeMutation('a'))
+    expect((await queue.status()).pending).toBe(5)
+
+    const result = await queue.flush()
+    expect(result.delivered).toBe(5)
+    expect(new Set(deliver.mock.calls.map((c) => (c[0] as OxelotMutation).id)).size).toBe(5)
+  })
+
+  it('compacts survivors into consecutive chunks above the consumed range', async () => {
+    const kv = new MemoryKv()
+    const deliver = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network down')) // 'a' transient → retried later
+      .mockResolvedValue(undefined)
+    const queue = new PersistentSyncQueue(kv, { deliver }, undefined, { chunkSize: 2 })
+    for (const id of ['a', 'b', 'c', 'd']) await queue.enqueue(makeMutation(id))
+
+    const result = await queue.flush()
+    expect(result.delivered).toBe(3)
+
+    const head = await kv.get<{ base: number; count: number; chunkCount: number }>('oxelot.sync.queue')
+    expect(head?.base).toBe(2) // fresh range above the consumed 0..1
+    expect(head?.count).toBe(1)
+    expect(head?.chunkCount).toBe(1)
+
+    // Old live keys are tombstoned; the survivor keeps FIFO order ('a' failed
+    // transiently and is kept for retry).
+    expect(await kv.get<unknown[]>('oxelot.sync.queue.c.0')).toEqual([])
+    expect(await kv.get<unknown[]>('oxelot.sync.queue.c.1')).toEqual([])
+    expect((await loadPersistedQueue(kv)).map((m) => m.id)).toEqual(['a'])
+
+    // Expire the survivor's backoff window, then drain again exactly once.
+    // Legacy-array reseeding is intentional: it re-exercises v1→v2 migration.
+    const survivor = (await loadPersistedQueue(kv))[0]
+    expect(survivor?.id).toBe('a')
+    if (survivor) {
+      survivor.nextRetryAt = Date.now() - 1
+      await kv.set('oxelot.sync.queue', [survivor])
+    }
+    const again = await queue.flush()
+    expect(again.delivered).toBe(1)
+    expect((await queue.status()).pending).toBe(0)
+  })
+
+  it('bounds crash re-delivery to checkpoint envelopes across chunks', async () => {
+    const kv = new MemoryKv()
+    const observed: string[] = []
+    const deliver = vi.fn().mockImplementation(async (m: OxelotMutation) => {
+      const q = await loadPersistedQueue(kv)
+      observed.push(q.map((x) => x.id).join(','))
+      void m
+    })
+    const queue = new PersistentSyncQueue(kv, { deliver }, undefined, { checkpoint: 1, chunkSize: 2 })
+    for (const id of ['a', 'b', 'c', 'd', 'e']) await queue.enqueue(makeMutation(id))
+
+    const result = await queue.flush()
+    expect(result.delivered).toBe(5)
+    // Each delivery observes the queue with all previously delivered
+    // envelopes already persisted (atomic pop, checkpoint=1).
+    expect(observed).toEqual(['a,b,c,d,e', 'b,c,d,e', 'c,d,e', 'd,e', 'e'])
+    expect((await queue.status()).pending).toBe(0)
+  })
+
+  it('keeps backoff-only drains on the same layout without advancing the base', async () => {
+    const kv = new MemoryKv()
+    const deliver = vi.fn().mockRejectedValue(new Error('network down'))
+    const queue = new PersistentSyncQueue(kv, { deliver }, undefined, { chunkSize: 2 })
+    for (const id of ['a', 'b']) await queue.enqueue(makeMutation(id))
+
+    await queue.flush()
+    const head = await kv.get<{ base: number; chunkCount: number }>('oxelot.sync.queue')
+    expect(head?.base).toBe(0) // no progress → no relayout, no key growth
+    expect(head?.chunkCount).toBe(1)
+    expect((await loadPersistedQueue(kv)).map((m) => m.attempts)).toEqual([1, 1])
   })
 })
 

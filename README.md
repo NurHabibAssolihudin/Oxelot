@@ -61,6 +61,7 @@ Full workflow in [Chapter 10](docs/10-user-guide.md).
 - [x] Phase 1 — Foundation & Storage (MVP) `v0.1.0` — **implemented** (unit tests green, G7 bundle gate passing)
 - [x] Phase 2 — Hardware & Background Layer `v0.2.0` — **implemented** (M2.1 SW relay, M2.2 durable queue + G4 soak, M2.3 Web Locks, M2.4 periodic sync, M2.5 hardware bridge)
 - [x] Stabilization `v0.2.1` — **implemented** (`useOxelotSyncStatus` snapshot fix + queue seeding, `useOxelotStorage.remove` now enqueues a `delete` envelope via `makeStorageMutation(..., { op: 'delete' })`, first React unit-test suite — see docs/11 "Stabilization — v0.2.1")
+- [x] Stabilization `v0.2.2` — **implemented** (sync queue O(n) → chunked layout v2: manifest + ≤500-envelope chunks, two-phase compaction, transparent legacy migration; exactly-once/pop-on-success/checkpoint semantics unchanged — see docs/11 "Stabilization — v0.2.2")
 - [ ] Phase 3 — Daemon / Advanced Bridge `v0.3.0`
 
 ### Phase 2 implementation notes (v0.2.0)
